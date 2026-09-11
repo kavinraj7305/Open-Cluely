@@ -1,12 +1,13 @@
 // ============================================================================
-// OLLAMA AI SERVICE - Open-Cluely AI Assistant
+// GROQ AI SERVICE - Open-Cluely AI Assistant
 // ============================================================================
-// Uses Ollama's OpenAI-compatible API for local LLM inference.
+// Uses Groq's OpenAI-compatible Chat Completions API (https://api.groq.com/openai/v1).
 // Implements the same public interface as GeminiService so the runtime
-// can swap providers transparently.
+// can swap providers transparently. Image parts are forwarded as data URLs.
 // ============================================================================
 
 const {
+  resolveGroqModel,
   resolveProgrammingLanguage
 } = require('../../config');
 const {
@@ -19,20 +20,17 @@ const {
   buildSuggestResponsePrompt
 } = require('./prompts');
 
-const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
-const DEFAULT_OLLAMA_MODEL = 'llama3.2';
+const DEFAULT_GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
+const GROQ_REQUEST_TIMEOUT_MS = 360000;
+const GROQ_MAX_IMAGES = 1;
+const GROQ_MAX_TEXT_CHARS = 2500;
+const GROQ_MAX_OUTPUT_TOKENS = 800;
 
-function normalizeOllamaBaseUrl(baseUrl) {
-  return String(baseUrl || DEFAULT_OLLAMA_BASE_URL)
-    .trim()
-    .replace(/\/+$/, '')
-    .replace('://localhost', '://127.0.0.1');
-}
-
-class OllamaService {
-  constructor(options = {}) {
-    this.baseUrl = normalizeOllamaBaseUrl(options.baseUrl || DEFAULT_OLLAMA_BASE_URL);
-    this.modelName = String(options.modelName || DEFAULT_OLLAMA_MODEL).trim();
+class GroqService {
+  constructor(apiKey, options = {}) {
+    this.apiKey = String(apiKey || '').trim();
+    this.baseUrl = String(options.baseUrl || DEFAULT_GROQ_BASE_URL).replace(/\/+$/, '');
+    this.modelName = resolveGroqModel(options.modelName);
     this.programmingLanguage = resolveProgrammingLanguage(options.programmingLanguage);
     this.model = this.modelName;
 
@@ -45,55 +43,90 @@ class OllamaService {
     this.conversationHistory = [];
     this.maxHistoryLength = 20;
 
-    // Unused but kept for interface compatibility with GeminiService
     this.dailyTokenCount = 0;
     this.maxDailyTokens = Infinity;
     this.lastResetTime = Date.now();
-    this.apiKey = '';
 
-    console.log('OllamaService initialized:', this.modelName, 'at', this.baseUrl);
+    console.log('GroqService initialized:', this.modelName);
   }
 
   updateConfiguration(options = {}) {
     const previousProgrammingLanguage = this.programmingLanguage;
-    const nextBaseUrl = normalizeOllamaBaseUrl(options.baseUrl ?? this.baseUrl);
-    const nextModelName = String(options.modelName ?? this.modelName).trim();
+    const nextApiKey = String(options.apiKey ?? this.apiKey ?? '').trim();
+    const nextBaseUrl = String(options.baseUrl ?? this.baseUrl).replace(/\/+$/, '');
+    const nextModelName = resolveGroqModel(options.modelName ?? this.modelName);
     const nextProgrammingLanguage = resolveProgrammingLanguage(
       options.programmingLanguage ?? this.programmingLanguage
     );
 
-    const baseUrlChanged = nextBaseUrl !== this.baseUrl;
+    const apiKeyChanged = nextApiKey !== this.apiKey;
     const modelChanged = nextModelName !== this.modelName;
     const programmingLanguageChanged = nextProgrammingLanguage !== previousProgrammingLanguage;
 
+    this.apiKey = nextApiKey;
     this.baseUrl = nextBaseUrl;
     this.modelName = nextModelName;
     this.model = this.modelName;
     this.programmingLanguage = nextProgrammingLanguage;
 
     return {
-      apiKeyChanged: baseUrlChanged,
+      apiKeyChanged,
       modelChanged,
       programmingLanguageChanged
     };
   }
 
-  isQuotaExhaustedError() {
-    return false;
+  isQuotaExhaustedError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    if (this.isRateLimitError(error)) {
+      return false;
+    }
+
+    return (
+      message.includes('insufficient credits') ||
+      message.includes('quota exceeded') ||
+      message.includes('resource_exhausted')
+    );
   }
 
-  isAuthenticationError() {
-    return false;
+  isRateLimitError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return (
+      message.includes('rate_limit') ||
+      message.includes('rate limit') ||
+      message.includes('tokens per minute') ||
+      message.includes('itpm') ||
+      message.includes('otpm') ||
+      message.includes('request too large') ||
+      message.includes('413')
+    );
+  }
+
+  isAuthenticationError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return (
+      message.includes('invalid api key') ||
+      message.includes('incorrect api key') ||
+      message.includes('api key not valid') ||
+      message.includes('unauthorized') ||
+      message.includes('forbidden') ||
+      message.includes('401') ||
+      message.includes('403')
+    );
   }
 
   isRetryableError(error) {
+    if (this.isRateLimitError(error)) {
+      return false;
+    }
+
     const message = String(error?.message || '');
     return (
-      message.includes('ECONNREFUSED') ||
-      message.includes('ECONNRESET') ||
-      message.includes('fetch failed') ||
       message.includes('500') ||
-      message.includes('503')
+      message.includes('502') ||
+      message.includes('503') ||
+      message.includes('ECONNRESET') ||
+      message.includes('fetch failed')
     );
   }
 
@@ -133,18 +166,15 @@ class OllamaService {
 
   async _executeRequest(request, retryCount = 0) {
     try {
-      const prompt = typeof request.data === 'string'
-        ? request.data
-        : this._extractTextFromParts(request.data);
-      const images = typeof request.data === 'string' ? [] : this._extractImagesFromParts(request.data);
+      const userContent = this._buildUserContent(request.data);
 
       if (typeof request.onChunk === 'function') {
-        return await this._streamChat(prompt, request, images);
+        return await this._chat(userContent, { stream: true, onChunk: request.onChunk, request });
       }
 
-      return await this._chat(prompt, images);
+      return await this._chat(userContent, { stream: false });
     } catch (error) {
-      console.error(`Ollama request error (attempt ${retryCount + 1}):`, error.message);
+      console.error(`Groq request error (attempt ${retryCount + 1}):`, error.message);
 
       if (request._firstChunkSent) {
         throw error;
@@ -152,159 +182,195 @@ class OllamaService {
 
       if (retryCount < this.maxRetries && this.isRetryableError(error)) {
         const backoffTime = Math.pow(2, retryCount) * 1000;
-        console.log(`Retrying Ollama request in ${backoffTime}ms...`);
+        console.log(`Retrying Groq request in ${backoffTime}ms...`);
         await new Promise((resolve) => setTimeout(resolve, backoffTime));
         return this._executeRequest(request, retryCount + 1);
-      }
-
-      const causeCode = error?.cause?.code || '';
-      if (causeCode === 'ECONNREFUSED' || String(error?.message || '').includes('fetch failed')) {
-        throw new Error(`Cannot connect to Ollama at ${this.baseUrl}. Start Ollama and try again.`);
       }
 
       throw error;
     }
   }
 
-  _extractTextFromParts(data) {
+  _truncateText(value) {
+    const text = String(value || '');
+    if (text.length <= GROQ_MAX_TEXT_CHARS) {
+      return text;
+    }
+
+    return text.slice(-GROQ_MAX_TEXT_CHARS);
+  }
+
+  _buildUserContent(data) {
     if (typeof data === 'string') {
-      return data;
+      return this._truncateText(data);
     }
 
-    if (Array.isArray(data)) {
-      const textParts = data
-        .filter((part) => typeof part === 'string' || part?.text)
-        .map((part) => (typeof part === 'string' ? part : part.text));
-      return textParts.join('\n');
-    }
-
-    return String(data || '');
-  }
-
-  _extractImagesFromParts(data) {
     if (!Array.isArray(data)) {
-      return [];
+      return this._truncateText(data);
     }
 
-    return data
-      .map((part) => part?.inlineData?.data)
-      .filter((value) => typeof value === 'string' && value.trim().length > 0)
-      .slice(-1);
+    const textParts = [];
+    const imageParts = [];
+
+    for (const part of data) {
+      if (typeof part === 'string') {
+        textParts.push({ type: 'text', text: part });
+        continue;
+      }
+
+      if (part?.text) {
+        textParts.push({ type: 'text', text: part.text });
+        continue;
+      }
+
+      const inline = part?.inlineData;
+      if (inline?.data) {
+        const mimeType = inline.mimeType || 'image/png';
+        imageParts.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${mimeType};base64,${inline.data}`
+          }
+        });
+      }
+    }
+
+    const limitedImages = imageParts.slice(-GROQ_MAX_IMAGES);
+    const content = [
+      ...textParts.map((part) => ({
+        ...part,
+        text: this._truncateText(part.text)
+      })),
+      ...limitedImages
+    ];
+
+    if (imageParts.length > GROQ_MAX_IMAGES) {
+      console.log(`Groq: using latest ${GROQ_MAX_IMAGES} screenshot(s) to stay under free-tier token limits`);
+    }
+
+    if (content.length === 1 && content[0].type === 'text') {
+      return content[0].text;
+    }
+
+    return content;
   }
 
-  _buildMessages(prompt, images = []) {
-    const userMessage = { role: 'user', content: prompt };
-    if (images.length > 0) {
-      userMessage.images = images;
-    }
-
+  _buildMessages(userContent) {
     return [
       { role: 'system', content: 'You are a helpful AI assistant.' },
-      userMessage
+      { role: 'user', content: userContent }
     ];
   }
 
-  async _chat(prompt, images = []) {
-    const url = `${this.baseUrl}/api/chat`;
-    const messages = this._buildMessages(prompt, images);
-
-    console.log(`[Ollama API] Non-streaming request started (model: ${this.modelName})`);
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: this.modelName,
-        messages,
-        stream: false
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      throw new Error(`Ollama API error ${response.status}: ${errorText}`);
+  _extractMessageText(message) {
+    const content = message?.content;
+    if (typeof content === 'string') {
+      return content;
     }
 
-    const result = await response.json();
-    const responseText = result.message?.content || '';
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => {
+          if (typeof part === 'string') {
+            return part;
+          }
+          return part?.text || '';
+        })
+        .join('');
+    }
 
-    console.log(`[Ollama API] Non-streaming request completed (${responseText.length} chars)`);
-    return responseText;
+    return '';
   }
 
-  async _streamChat(prompt, request, images = []) {
-    const url = `${this.baseUrl}/api/chat`;
-    const messages = this._buildMessages(prompt, images);
+  async _chat(userContent, options = {}) {
+    if (!this.apiKey) {
+      throw new Error('No Groq API key configured. Add it in Settings.');
+    }
 
-    console.log(`[Ollama API] Streaming request started (model: ${this.modelName})`);
+    const url = `${this.baseUrl}/chat/completions`;
+    const stream = Boolean(options.stream);
+    const messages = this._buildMessages(userContent);
+
+    console.log(`[Groq API] ${stream ? 'Streaming' : 'Non-streaming'} request started (model: ${this.modelName})`);
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`
+      },
       body: JSON.stringify({
         model: this.modelName,
         messages,
-        stream: true
-      })
+        stream,
+        max_tokens: GROQ_MAX_OUTPUT_TOKENS,
+        max_completion_tokens: GROQ_MAX_OUTPUT_TOKENS
+      }),
+      signal: AbortSignal.timeout(GROQ_REQUEST_TIMEOUT_MS)
     });
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
-      throw new Error(`Ollama API error ${response.status}: ${errorText}`);
+      throw new Error(`Groq API error ${response.status}: ${errorText}`);
     }
 
-    let fullText = '';
-    let chunkIndex = 0;
-    const reader = response.body;
+    if (!stream) {
+      const result = await response.json();
+      const responseText = this._extractMessageText(result.choices?.[0]?.message);
+      console.log(`[Groq API] Non-streaming request completed (${responseText.length} chars)`);
+      return responseText;
+    }
 
-    // Node.js fetch returns a ReadableStream; iterate with async for-of on the body
+    return this._readSseStream(response, options);
+  }
+
+  async _readSseStream(response, options = {}) {
     const decoder = new TextDecoder();
     let buffer = '';
+    let fullText = '';
+    let chunkIndex = 0;
+    const request = options.request || {};
 
-    for await (const chunk of reader) {
+    for await (const chunk of response.body) {
       buffer += decoder.decode(chunk, { stream: true });
-
-      // Each line is a JSON object separated by newlines
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed) continue;
+        if (!trimmed || !trimmed.startsWith('data:')) {
+          continue;
+        }
+
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === '[DONE]') {
+          continue;
+        }
 
         try {
-          const parsed = JSON.parse(trimmed);
-          const content = parsed.message?.content || '';
+          const parsed = JSON.parse(payload);
+          const delta = parsed.choices?.[0]?.delta;
+          const content = typeof delta?.content === 'string'
+            ? delta.content
+            : this._extractMessageText(delta);
+
           if (content) {
             fullText += content;
             chunkIndex += 1;
             if (!request._firstChunkSent) {
               request._firstChunkSent = true;
             }
-            request.onChunk({ text: content, index: chunkIndex });
+            if (typeof options.onChunk === 'function') {
+              options.onChunk({ text: content, index: chunkIndex });
+            }
           }
         } catch {
-          // skip malformed lines
+          // skip malformed SSE lines
         }
       }
     }
 
-    // Process remaining buffer
-    if (buffer.trim()) {
-      try {
-        const parsed = JSON.parse(buffer.trim());
-        const content = parsed.message?.content || '';
-        if (content) {
-          fullText += content;
-          chunkIndex += 1;
-          request.onChunk({ text: content, index: chunkIndex });
-        }
-      } catch {
-        // skip
-      }
-    }
-
-    console.log(`[Ollama API] Streaming request completed (${chunkIndex} chunks, ${fullText.length} chars)`);
+    console.log(`[Groq API] Streaming request completed (${chunkIndex} chunks, ${fullText.length} chars)`);
     return fullText;
   }
 
@@ -357,19 +423,23 @@ class OllamaService {
   }
 
   async analyzeScreenshots(imageParts, additionalContext = '', options = {}) {
-    const contextString = typeof options.contextStringOverride === 'string'
-      ? options.contextStringOverride
-      : this.getContextString();
+    const contextString = this._truncateText(
+      typeof options.contextStringOverride === 'string'
+        ? options.contextStringOverride
+        : this.getContextString()
+    );
+    const limitedImageParts = Array.isArray(imageParts) ? imageParts.slice(-GROQ_MAX_IMAGES) : [];
     const prompt = buildScreenshotAnalysisPrompt({
       contextString,
       additionalContext,
-      programmingLanguage: this.programmingLanguage
+      programmingLanguage: this.programmingLanguage,
+      screenshotCount: limitedImageParts.length
     });
 
     const streamOptions = { onChunk: options.onChunk };
     const result = await this.generateMultimodal([
       { text: prompt },
-      ...imageParts
+      ...limitedImageParts
     ], streamOptions);
 
     this.addToHistory('assistant', `Screenshot analysis: ${result}`);
@@ -384,9 +454,11 @@ class OllamaService {
   }
 
   async askAiWithSessionContext(options = {}) {
-    const contextString = typeof options.contextString === 'string'
-      ? options.contextString
-      : this.getContextString();
+    const contextString = this._truncateText(
+      typeof options.contextString === 'string'
+        ? options.contextString
+        : this.getContextString()
+    );
     const prompt = buildAskAiSessionPrompt({
       contextString,
       transcriptContext: options.transcriptContext || '',
@@ -402,21 +474,24 @@ class OllamaService {
   }
 
   async askAiWithSessionContextAndScreenshots(imageParts, options = {}) {
-    const contextString = typeof options.contextString === 'string'
-      ? options.contextString
-      : this.getContextString();
+    const contextString = this._truncateText(
+      typeof options.contextString === 'string'
+        ? options.contextString
+        : this.getContextString()
+    );
+    const limitedImageParts = Array.isArray(imageParts) ? imageParts.slice(-GROQ_MAX_IMAGES) : [];
     const prompt = buildAskAiSessionPrompt({
       contextString,
-      transcriptContext: options.transcriptContext || '',
-      sessionSummary: options.sessionSummary || '',
-      screenshotCount: options.screenshotCount || imageParts.length,
+      transcriptContext: this._truncateText(options.transcriptContext || ''),
+      sessionSummary: this._truncateText(options.sessionSummary || ''),
+      screenshotCount: limitedImageParts.length,
       mode: options.mode || 'best-next-answer'
     });
 
     const streamOptions = { onChunk: options.onChunk };
     const result = await this.generateMultimodal([
       { text: prompt },
-      ...imageParts
+      ...limitedImageParts
     ], streamOptions);
 
     this.addToHistory('assistant', `Ask AI: ${result}`);
@@ -487,4 +562,4 @@ class OllamaService {
   }
 }
 
-module.exports = OllamaService;
+module.exports = GroqService;

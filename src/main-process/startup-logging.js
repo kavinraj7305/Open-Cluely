@@ -9,9 +9,17 @@ function logStartupConfiguration({
   defaultProgrammingLanguage
 }) {
   const geminiApiKey = typeof appState?.geminiApiKey === 'string' ? appState.geminiApiKey : '';
+  const grokApiKey = typeof appState?.grokApiKey === 'string' ? appState.grokApiKey : '';
   const assemblyAiApiKey = typeof appState?.assemblyAiApiKey === 'string' ? appState.assemblyAiApiKey : '';
   const geminiApiKeyCount = geminiApiKey
     ? geminiApiKey
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .length
+    : 0;
+  const grokApiKeyCount = grokApiKey
+    ? grokApiKey
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean)
@@ -22,6 +30,8 @@ function logStartupConfiguration({
   console.log('Startup configuration:');
   console.log(`  GEMINI_API_KEY (UI state): ${geminiApiKey ? 'present' : 'missing'}`);
   console.log(`  GEMINI_API_KEYS configured (UI state): ${geminiApiKeyCount}`);
+  console.log(`  GROK_API_KEY (UI state): ${grokApiKey ? 'present' : 'missing'}`);
+  console.log(`  GROK_API_KEYS configured (UI state): ${grokApiKeyCount}`);
   console.log(`  ASSEMBLY_AI_API_KEY (UI state): ${assemblyAiApiKey ? 'present' : 'missing'}`);
   console.log(`  HIDE_FROM_SCREEN_CAPTURE: ${appEnvironment.hideFromScreenCapture}`);
   console.log(`  MAX_SCREENSHOTS: ${appEnvironment.maxScreenshots}`);

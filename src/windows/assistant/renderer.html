@@ -224,6 +224,9 @@
           <label class="settings-label">AI Provider</label>
           <select id="setting-ai-provider" class="settings-input">
             <option value="gemini">Gemini</option>
+            <option value="groq">Groq</option>
+            <option value="bedrock">AWS Bedrock</option>
+            <option value="grok">Grok (xAI)</option>
             <option value="ollama">Ollama (Local)</option>
           </select>
         </div>
@@ -249,10 +252,82 @@
             <select id="setting-gemini-model" class="settings-input"></select>
           </div>
         </div>
+        <div id="groq-settings-group" class="hidden">
+          <div class="settings-group">
+            <label class="settings-label">Groq API Key(s)</label>
+            <div class="settings-input-row">
+              <input type="password" id="setting-groq-key" class="settings-input" placeholder="Enter Groq API key(s), comma-separated..." />
+              <button
+                type="button"
+                id="toggle-groq-key-visibility"
+                class="settings-input-toggle"
+                aria-label="Show Groq API key"
+                aria-pressed="false"
+              >
+                Show
+              </button>
+            </div>
+            <div class="settings-helper-text">Get a key from console.groq.com. Keys start with gsk_. Multiple keys are supported as comma-separated values.</div>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label">Groq Model</label>
+            <select id="setting-groq-model" class="settings-input"></select>
+          </div>
+        </div>
+        <div id="bedrock-settings-group" class="hidden">
+          <div class="settings-group">
+            <label class="settings-label">Bedrock API Key</label>
+            <div class="settings-input-row">
+              <input type="password" id="setting-bedrock-key" class="settings-input" placeholder="Enter Bedrock API key (ABSK...)" />
+              <button
+                type="button"
+                id="toggle-bedrock-key-visibility"
+                class="settings-input-toggle"
+                aria-label="Show Bedrock API key"
+                aria-pressed="false"
+              >
+                Show
+              </button>
+            </div>
+            <div class="settings-helper-text">Long-term Bedrock API key from AWS (starts with ABSK). Same key as SkillForge BEDROCK_API_KEY.</div>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label">Bedrock Model ID</label>
+            <input type="text" id="setting-bedrock-model" class="settings-input" placeholder="qwen.qwen3-coder-30b-a3b-v1:0" />
+            <div class="settings-helper-text">Qwen Coder is text-only. Screen AI cannot read screenshots with this model — type or paste the question, then Ask AI.</div>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label">Bedrock Region</label>
+            <input type="text" id="setting-bedrock-region" class="settings-input" placeholder="ap-south-1" />
+            <div class="settings-helper-text">Must match the region your Bedrock key and model are enabled in.</div>
+          </div>
+        </div>
+        <div id="grok-settings-group" class="hidden">
+          <div class="settings-group">
+            <label class="settings-label">Grok API Key(s)</label>
+            <div class="settings-input-row">
+              <input type="password" id="setting-grok-key" class="settings-input" placeholder="Enter Grok API key(s), comma-separated..." />
+              <button
+                type="button"
+                id="toggle-grok-key-visibility"
+                class="settings-input-toggle"
+                aria-label="Show Grok API key"
+                aria-pressed="false"
+              >
+                Show
+              </button>
+            </div>
+            <div class="settings-helper-text">Get a key from console.x.ai. Multiple keys are supported as comma-separated values.</div>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label">Grok Model</label>
+            <select id="setting-grok-model" class="settings-input"></select>
+          </div>
+        </div>
         <div id="ollama-settings-group" class="hidden">
           <div class="settings-group">
             <label class="settings-label">Ollama Server URL</label>
-            <input type="text" id="setting-ollama-base-url" class="settings-input" placeholder="http://localhost:11434" />
+            <input type="text" id="setting-ollama-base-url" class="settings-input" placeholder="http://127.0.0.1:11434" />
             <div class="settings-helper-text">URL of your running Ollama instance.</div>
           </div>
           <div class="settings-group">

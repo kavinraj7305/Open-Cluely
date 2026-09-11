@@ -8,9 +8,19 @@ function getDefaultAppState() {
   return {
     aiProvider: null,
     geminiApiKey: null,
+    grokApiKey: null,
+    groqApiKey: null,
+    bedrockApiKey: null,
     assemblyAiApiKey: null,
     geminiApiKeyIndex: 0,
+    grokApiKeyIndex: 0,
+    groqApiKeyIndex: 0,
+    bedrockApiKeyIndex: 0,
     geminiModel: null,
+    grokModel: null,
+    groqModel: null,
+    bedrockModel: null,
+    bedrockRegion: null,
     ollamaBaseUrl: null,
     ollamaModel: null,
     assemblyAiSpeechModel: null,
@@ -25,13 +35,28 @@ function sanitizeAppState(state) {
 
   if (state && typeof state === 'object' && !Array.isArray(state)) {
     const aiProvider = String(state.aiProvider ?? '').trim().toLowerCase();
-    if (aiProvider === 'gemini' || aiProvider === 'ollama') {
+    if (aiProvider === 'gemini' || aiProvider === 'grok' || aiProvider === 'groq' || aiProvider === 'bedrock' || aiProvider === 'ollama') {
       nextState.aiProvider = aiProvider;
     }
 
     if (typeof state.geminiApiKey === 'string') {
       const geminiApiKey = state.geminiApiKey.trim();
       nextState.geminiApiKey = geminiApiKey || null;
+    }
+
+    if (typeof state.grokApiKey === 'string') {
+      const grokApiKey = state.grokApiKey.trim();
+      nextState.grokApiKey = grokApiKey || null;
+    }
+
+    if (typeof state.groqApiKey === 'string') {
+      const groqApiKey = state.groqApiKey.trim();
+      nextState.groqApiKey = groqApiKey || null;
+    }
+
+    if (typeof state.bedrockApiKey === 'string') {
+      const bedrockApiKey = state.bedrockApiKey.trim();
+      nextState.bedrockApiKey = bedrockApiKey || null;
     }
 
     if (typeof state.assemblyAiApiKey === 'string') {
@@ -44,8 +69,39 @@ function sanitizeAppState(state) {
       nextState.geminiApiKeyIndex = geminiApiKeyIndex;
     }
 
+    const grokApiKeyIndex = Number.parseInt(String(state.grokApiKeyIndex ?? ''), 10);
+    if (Number.isFinite(grokApiKeyIndex) && grokApiKeyIndex >= 0) {
+      nextState.grokApiKeyIndex = grokApiKeyIndex;
+    }
+
+    const groqApiKeyIndex = Number.parseInt(String(state.groqApiKeyIndex ?? ''), 10);
+    if (Number.isFinite(groqApiKeyIndex) && groqApiKeyIndex >= 0) {
+      nextState.groqApiKeyIndex = groqApiKeyIndex;
+    }
+
+    const bedrockApiKeyIndex = Number.parseInt(String(state.bedrockApiKeyIndex ?? ''), 10);
+    if (Number.isFinite(bedrockApiKeyIndex) && bedrockApiKeyIndex >= 0) {
+      nextState.bedrockApiKeyIndex = bedrockApiKeyIndex;
+    }
+
     if (typeof state.geminiModel === 'string' && state.geminiModel.trim()) {
       nextState.geminiModel = state.geminiModel.trim();
+    }
+
+    if (typeof state.grokModel === 'string' && state.grokModel.trim()) {
+      nextState.grokModel = state.grokModel.trim();
+    }
+
+    if (typeof state.groqModel === 'string' && state.groqModel.trim()) {
+      nextState.groqModel = state.groqModel.trim();
+    }
+
+    if (typeof state.bedrockModel === 'string' && state.bedrockModel.trim()) {
+      nextState.bedrockModel = state.bedrockModel.trim();
+    }
+
+    if (typeof state.bedrockRegion === 'string' && state.bedrockRegion.trim()) {
+      nextState.bedrockRegion = state.bedrockRegion.trim();
     }
 
     if (typeof state.ollamaBaseUrl === 'string' && state.ollamaBaseUrl.trim()) {
@@ -72,6 +128,13 @@ function sanitizeAppState(state) {
     const themePreference = String(state.themePreference ?? '').trim().toLowerCase();
     if (themePreference === 'dark' || themePreference === 'light') {
       nextState.themePreference = themePreference;
+    }
+  }
+
+  if (!nextState.groqApiKey && String(nextState.grokApiKey || '').startsWith('gsk_')) {
+    nextState.groqApiKey = nextState.grokApiKey;
+    if (!nextState.geminiApiKey && (nextState.aiProvider === 'gemini' || nextState.aiProvider === 'grok' || !nextState.aiProvider)) {
+      nextState.aiProvider = 'groq';
     }
   }
 

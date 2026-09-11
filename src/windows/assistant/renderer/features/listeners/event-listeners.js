@@ -189,13 +189,7 @@ export function setupEventListeners({
 
         if (isShortcutPressed?.(event, 'screenAi')) {
             event.preventDefault();
-            if (screenAiBtn?.disabled) {
-                return;
-            }
-            analyzeScreenshotsOnly().catch((error) => {
-                console.error('Local Screen AI shortcut failed:', error);
-                addMonitorLog('error', 'shortcut-screen-ai-failed', error.message);
-            });
+            addMonitorLog('info', 'shortcut-local', 'Local Screen AI shortcut captured; awaiting global Screen AI event');
             return;
         }
 

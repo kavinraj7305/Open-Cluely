@@ -6,10 +6,23 @@ export function createSettingsPanelManager({
     settingsPanel,
     settingAiProvider,
     geminiSettingsGroup,
+    groqSettingsGroup,
+    bedrockSettingsGroup,
+    grokSettingsGroup,
     ollamaSettingsGroup,
     settingGeminiKey,
     toggleGeminiKeyVisibilityBtn,
     settingGeminiModel,
+    settingGroqKey,
+    toggleGroqKeyVisibilityBtn,
+    settingGroqModel,
+    settingBedrockKey,
+    toggleBedrockKeyVisibilityBtn,
+    settingBedrockModel,
+    settingBedrockRegion,
+    settingGrokKey,
+    toggleGrokKeyVisibilityBtn,
+    settingGrokModel,
     settingProgrammingLanguage,
     settingOllamaBaseUrl,
     settingOllamaModel,
@@ -71,13 +84,20 @@ export function createSettingsPanelManager({
     }
 
     function updateProviderVisibility(provider) {
-        const isGemini = provider !== 'ollama';
-
         if (geminiSettingsGroup) {
-            geminiSettingsGroup.classList.toggle('hidden', !isGemini);
+            geminiSettingsGroup.classList.toggle('hidden', provider !== 'gemini');
+        }
+        if (groqSettingsGroup) {
+            groqSettingsGroup.classList.toggle('hidden', provider !== 'groq');
+        }
+        if (bedrockSettingsGroup) {
+            bedrockSettingsGroup.classList.toggle('hidden', provider !== 'bedrock');
+        }
+        if (grokSettingsGroup) {
+            grokSettingsGroup.classList.toggle('hidden', provider !== 'grok');
         }
         if (ollamaSettingsGroup) {
-            ollamaSettingsGroup.classList.toggle('hidden', isGemini);
+            ollamaSettingsGroup.classList.toggle('hidden', provider !== 'ollama');
         }
     }
 
@@ -96,7 +116,7 @@ export function createSettingsPanelManager({
             return;
         }
 
-        const baseUrl = settingOllamaBaseUrl.value.trim() || 'http://localhost:11434';
+        const baseUrl = settingOllamaBaseUrl.value.trim() || 'http://127.0.0.1:11434';
 
         try {
             if (fetchOllamaModelsBtn) {
@@ -187,6 +207,54 @@ export function createSettingsPanelManager({
             : configuredModels[0];
     }
 
+    function populateGrokModelOptions(models, selectedModel) {
+        if (!settingGrokModel) {
+            return;
+        }
+
+        settingGrokModel.innerHTML = '';
+
+        const configuredModels = Array.isArray(models) ? models : [];
+        if (configuredModels.length === 0) {
+            throw new Error('Grok models are not configured.');
+        }
+
+        configuredModels.forEach((modelName) => {
+            const option = document.createElement('option');
+            option.value = modelName;
+            option.textContent = modelName;
+            settingGrokModel.appendChild(option);
+        });
+
+        settingGrokModel.value = configuredModels.includes(selectedModel)
+            ? selectedModel
+            : configuredModels[0];
+    }
+
+    function populateGroqModelOptions(models, selectedModel) {
+        if (!settingGroqModel) {
+            return;
+        }
+
+        settingGroqModel.innerHTML = '';
+
+        const configuredModels = Array.isArray(models) ? models : [];
+        if (configuredModels.length === 0) {
+            throw new Error('Groq models are not configured.');
+        }
+
+        configuredModels.forEach((modelName) => {
+            const option = document.createElement('option');
+            option.value = modelName;
+            option.textContent = modelName;
+            settingGroqModel.appendChild(option);
+        });
+
+        settingGroqModel.value = configuredModels.includes(selectedModel)
+            ? selectedModel
+            : configuredModels[0];
+    }
+
     function populateProgrammingLanguageOptions(languages, selectedLanguage) {
         if (!settingProgrammingLanguage) {
             return;
@@ -256,8 +324,22 @@ export function createSettingsPanelManager({
                 if (settingGeminiKey) settingGeminiKey.value = settings.geminiApiKey || '';
                 populateGeminiModelOptions(settings.geminiModels, settings.geminiModel || settings.defaultGeminiModel);
 
+                if (settingGrokKey) settingGrokKey.value = settings.grokApiKey || '';
+                populateGrokModelOptions(settings.grokModels, settings.grokModel || settings.defaultGrokModel);
+
+                if (settingGroqKey) settingGroqKey.value = settings.groqApiKey || '';
+                populateGroqModelOptions(settings.groqModels, settings.groqModel || settings.defaultGroqModel);
+
+                if (settingBedrockKey) settingBedrockKey.value = settings.bedrockApiKey || '';
+                if (settingBedrockModel) {
+                    settingBedrockModel.value = settings.bedrockModel || settings.defaultBedrockModel || 'qwen.qwen3-coder-30b-a3b-v1:0';
+                }
+                if (settingBedrockRegion) {
+                    settingBedrockRegion.value = settings.bedrockRegion || settings.defaultBedrockRegion || 'ap-south-1';
+                }
+
                 // Ollama settings
-                if (settingOllamaBaseUrl) settingOllamaBaseUrl.value = settings.ollamaBaseUrl || 'http://localhost:11434';
+                if (settingOllamaBaseUrl) settingOllamaBaseUrl.value = settings.ollamaBaseUrl || 'http://127.0.0.1:11434';
                 if (settingOllamaModel) settingOllamaModel.value = settings.ollamaModel || 'llama3.2';
                 if (settingOllamaModelSelect) settingOllamaModelSelect.classList.add('hidden');
 
@@ -280,6 +362,9 @@ export function createSettingsPanelManager({
         }
 
         setApiKeyFieldVisibility(settingGeminiKey, toggleGeminiKeyVisibilityBtn, 'Gemini', false);
+        setApiKeyFieldVisibility(settingGroqKey, toggleGroqKeyVisibilityBtn, 'Groq', false);
+        setApiKeyFieldVisibility(settingBedrockKey, toggleBedrockKeyVisibilityBtn, 'Bedrock', false);
+        setApiKeyFieldVisibility(settingGrokKey, toggleGrokKeyVisibilityBtn, 'Grok', false);
         setApiKeyFieldVisibility(settingAssemblyKey, toggleAssemblyKeyVisibilityBtn, 'AssemblyAI', false);
 
         settingsPanel.classList.remove('hidden');
@@ -291,6 +376,9 @@ export function createSettingsPanelManager({
         }
 
         setApiKeyFieldVisibility(settingGeminiKey, toggleGeminiKeyVisibilityBtn, 'Gemini', false);
+        setApiKeyFieldVisibility(settingGroqKey, toggleGroqKeyVisibilityBtn, 'Groq', false);
+        setApiKeyFieldVisibility(settingBedrockKey, toggleBedrockKeyVisibilityBtn, 'Bedrock', false);
+        setApiKeyFieldVisibility(settingGrokKey, toggleGrokKeyVisibilityBtn, 'Grok', false);
         setApiKeyFieldVisibility(settingAssemblyKey, toggleAssemblyKeyVisibilityBtn, 'AssemblyAI', false);
     }
 
@@ -301,6 +389,27 @@ export function createSettingsPanelManager({
             if (aiProvider === 'gemini') {
                 if (!settingGeminiModel || settingGeminiModel.options.length === 0) {
                     throw new Error('Gemini models are not configured.');
+                }
+            }
+
+            if (aiProvider === 'grok') {
+                if (!settingGrokModel || settingGrokModel.options.length === 0) {
+                    throw new Error('Grok models are not configured.');
+                }
+            }
+
+            if (aiProvider === 'groq') {
+                if (!settingGroqModel || settingGroqModel.options.length === 0) {
+                    throw new Error('Groq models are not configured.');
+                }
+            }
+
+            if (aiProvider === 'bedrock') {
+                if (!settingBedrockModel || !settingBedrockModel.value.trim()) {
+                    throw new Error('Bedrock model ID is required.');
+                }
+                if (!settingBedrockRegion || !settingBedrockRegion.value.trim()) {
+                    throw new Error('Bedrock region is required.');
                 }
             }
 
@@ -315,8 +424,15 @@ export function createSettingsPanelManager({
             const settings = {
                 aiProvider,
                 geminiApiKey: settingGeminiKey ? settingGeminiKey.value.trim() : '',
+                grokApiKey: settingGrokKey ? settingGrokKey.value.trim() : '',
+                groqApiKey: settingGroqKey ? settingGroqKey.value.trim() : '',
+                bedrockApiKey: settingBedrockKey ? settingBedrockKey.value.trim() : '',
                 assemblyAiApiKey: settingAssemblyKey ? settingAssemblyKey.value.trim() : '',
                 geminiModel: settingGeminiModel ? settingGeminiModel.value : '',
+                grokModel: settingGrokModel ? settingGrokModel.value : '',
+                groqModel: settingGroqModel ? settingGroqModel.value : '',
+                bedrockModel: settingBedrockModel ? settingBedrockModel.value.trim() : '',
+                bedrockRegion: settingBedrockRegion ? settingBedrockRegion.value.trim() : '',
                 ollamaBaseUrl: settingOllamaBaseUrl ? settingOllamaBaseUrl.value.trim() : '',
                 ollamaModel: settingOllamaModel ? settingOllamaModel.value.trim() : '',
                 programmingLanguage: settingProgrammingLanguage.value,
@@ -343,6 +459,9 @@ export function createSettingsPanelManager({
     }
 
     bindApiKeyVisibilityToggle(settingGeminiKey, toggleGeminiKeyVisibilityBtn, 'Gemini');
+    bindApiKeyVisibilityToggle(settingGroqKey, toggleGroqKeyVisibilityBtn, 'Groq');
+    bindApiKeyVisibilityToggle(settingBedrockKey, toggleBedrockKeyVisibilityBtn, 'Bedrock');
+    bindApiKeyVisibilityToggle(settingGrokKey, toggleGrokKeyVisibilityBtn, 'Grok');
     bindApiKeyVisibilityToggle(settingAssemblyKey, toggleAssemblyKeyVisibilityBtn, 'AssemblyAI');
     bindProviderToggle();
     bindFetchOllamaModels();

@@ -208,10 +208,23 @@ const closeSettingsBtn = document.getElementById('close-settings');
 const saveSettingsBtn = document.getElementById('save-settings-btn');
 const settingAiProvider = document.getElementById('setting-ai-provider');
 const geminiSettingsGroup = document.getElementById('gemini-settings-group');
+const groqSettingsGroup = document.getElementById('groq-settings-group');
+const bedrockSettingsGroup = document.getElementById('bedrock-settings-group');
+const grokSettingsGroup = document.getElementById('grok-settings-group');
 const ollamaSettingsGroup = document.getElementById('ollama-settings-group');
 const settingGeminiKey = document.getElementById('setting-gemini-key');
 const toggleGeminiKeyVisibilityBtn = document.getElementById('toggle-gemini-key-visibility');
 const settingGeminiModel = document.getElementById('setting-gemini-model');
+const settingGroqKey = document.getElementById('setting-groq-key');
+const toggleGroqKeyVisibilityBtn = document.getElementById('toggle-groq-key-visibility');
+const settingGroqModel = document.getElementById('setting-groq-model');
+const settingBedrockKey = document.getElementById('setting-bedrock-key');
+const toggleBedrockKeyVisibilityBtn = document.getElementById('toggle-bedrock-key-visibility');
+const settingBedrockModel = document.getElementById('setting-bedrock-model');
+const settingBedrockRegion = document.getElementById('setting-bedrock-region');
+const settingGrokKey = document.getElementById('setting-grok-key');
+const toggleGrokKeyVisibilityBtn = document.getElementById('toggle-grok-key-visibility');
+const settingGrokModel = document.getElementById('setting-grok-model');
 const settingOllamaBaseUrl = document.getElementById('setting-ollama-base-url');
 const settingOllamaModel = document.getElementById('setting-ollama-model');
 const settingOllamaModelSelect = document.getElementById('setting-ollama-model-select');
@@ -234,6 +247,7 @@ const MAX_CHAT_INPUT_HEIGHT = 88;
 let isCloseConfirmationOpen = false;
 let hasGeminiApiKeysConfigured = false;
 let hasAssemblyAiApiKeyConfigured = false;
+let activeAiProvider = 'gemini';
 const aiActionInFlightState = {
     askAi: false,
     screenAi: false,
@@ -272,10 +286,23 @@ const settingsPanelManager = createSettingsPanelManager({
     settingsPanel,
     settingAiProvider,
     geminiSettingsGroup,
+    groqSettingsGroup,
+    bedrockSettingsGroup,
+    grokSettingsGroup,
     ollamaSettingsGroup,
     settingGeminiKey,
     toggleGeminiKeyVisibilityBtn,
     settingGeminiModel,
+    settingGroqKey,
+    toggleGroqKeyVisibilityBtn,
+    settingGroqModel,
+    settingBedrockKey,
+    toggleBedrockKeyVisibilityBtn,
+    settingBedrockModel,
+    settingBedrockRegion,
+    settingGrokKey,
+    toggleGrokKeyVisibilityBtn,
+    settingGrokModel,
     settingProgrammingLanguage,
     settingOllamaBaseUrl,
     settingOllamaModel,
@@ -570,12 +597,33 @@ function applyApiKeyAvailabilityFromSettings(settings) {
     if (!settings || typeof settings !== 'object') {
         hasGeminiApiKeysConfigured = false;
         hasAssemblyAiApiKeyConfigured = false;
+        activeAiProvider = 'gemini';
         return;
     }
 
+    activeAiProvider = settings.aiProvider || 'gemini';
+
     // Ollama doesn't require API keys, so treat it as always configured
-    if (settings.aiProvider === 'ollama') {
+    if (activeAiProvider === 'ollama') {
         hasGeminiApiKeysConfigured = true;
+    } else if (activeAiProvider === 'groq') {
+        if (typeof settings.hasGroqApiKeys === 'boolean') {
+            hasGeminiApiKeysConfigured = settings.hasGroqApiKeys;
+        } else {
+            hasGeminiApiKeysConfigured = hasConfiguredGeminiApiKeys(settings.groqApiKey);
+        }
+    } else if (activeAiProvider === 'bedrock') {
+        if (typeof settings.hasBedrockApiKeys === 'boolean') {
+            hasGeminiApiKeysConfigured = settings.hasBedrockApiKeys;
+        } else {
+            hasGeminiApiKeysConfigured = hasConfiguredGeminiApiKeys(settings.bedrockApiKey);
+        }
+    } else if (activeAiProvider === 'grok') {
+        if (typeof settings.hasGrokApiKeys === 'boolean') {
+            hasGeminiApiKeysConfigured = settings.hasGrokApiKeys;
+        } else {
+            hasGeminiApiKeysConfigured = hasConfiguredGeminiApiKeys(settings.grokApiKey);
+        }
     } else if (typeof settings.hasGeminiApiKeys === 'boolean') {
         hasGeminiApiKeysConfigured = settings.hasGeminiApiKeys;
     } else {
@@ -691,21 +739,48 @@ async function takeStealthScreenshot() {
     }
 }
 
+function getLatestScreenshotId() {
+    for (let index = chatMessagesArray.length - 1; index >= 0; index -= 1) {
+        const message = chatMessagesArray[index];
+        if (message?.type === 'screenshot' && typeof message.screenshotId === 'string' && message.screenshotId.trim()) {
+            return message.screenshotId;
+        }
+    }
+    return null;
+}
+
 function buildAskAiContextPayload() {
-    const bundle = buildFilteredAiContextBundle({ charBudget: AI_CONTEXT_CHAR_BUDGET, emitTruncationLog: true });
+    const screenshotId = getLatestScreenshotId();
     return {
         mode: 'best-next-answer',
-        contextString: bundle.contextString,
-        transcriptContext: bundle.transcriptContext,
-        sessionSummary: bundle.sessionSummary,
-        enabledScreenshotIds: bundle.enabledScreenshotIds,
-        screenshotCount: bundle.enabledScreenshotIds.length
+        contextString: '',
+        transcriptContext: '',
+        sessionSummary: '',
+        enabledScreenshotIds: screenshotId ? [screenshotId] : [],
+        screenshotCount: screenshotId ? 1 : 0,
+        latestScreenshotOnly: true
     };
+}
+
+function getMissingAiKeyMessage() {
+    if (activeAiProvider === 'groq') {
+        return 'Groq API key missing. Add it in Settings.';
+    }
+    if (activeAiProvider === 'bedrock') {
+        return 'Bedrock API key missing. Add it in Settings.';
+    }
+    if (activeAiProvider === 'grok') {
+        return 'Grok API key missing. Add it in Settings.';
+    }
+    if (activeAiProvider === 'ollama') {
+        return 'Ollama is not available. Check Settings.';
+    }
+    return 'Gemini API key missing. Add it in Settings.';
 }
 
 async function askAiWithSessionContext() {
     if (!hasGeminiApiKeysConfigured) {
-        showFeedback('Gemini API key missing. Add it in Settings.', 'error');
+        showFeedback(getMissingAiKeyMessage(), 'error');
         return;
     }
 
@@ -715,8 +790,8 @@ async function askAiWithSessionContext() {
     }
 
     const payload = buildAskAiContextPayload();
-    if (!payload.contextString && payload.enabledScreenshotIds.length === 0) {
-        showFeedback('No transcript or screenshots available yet', 'error');
+    if (payload.enabledScreenshotIds.length === 0) {
+        showFeedback('Take a screenshot of the question first', 'error');
         return;
     }
 
@@ -724,15 +799,13 @@ async function askAiWithSessionContext() {
         const stream = createStreamHandler('askAi');
         try {
             setAnalyzing(true);
-            showLoadingOverlay('Analyzing full session context...');
-            stream.start('**Best Next Answer:**\n\n');
+            showLoadingOverlay('Answering latest screenshot...');
+            stream.start('**Latest screenshot:**\n\n');
 
             const result = await window.electronAPI.askAiWithSessionContext(payload);
 
             if (result?.success && result?.text) {
-                const heading = result.usedScreenshots
-                    ? '**Best Next Answer (Transcript + Screen):**'
-                    : '**Best Next Answer (Transcript):**';
+                const heading = '**Latest screenshot:**';
                 stream.finalize(`${heading}\n\n${result.text}`);
                 showFeedback('Ask AI ready', 'success');
             } else {
@@ -752,13 +825,13 @@ async function askAiWithSessionContext() {
 
 async function analyzeScreenshotsOnly() {
     if (!hasGeminiApiKeysConfigured) {
-        showFeedback('Gemini API key missing. Add it in Settings.', 'error');
+        showFeedback(getMissingAiKeyMessage(), 'error');
         return;
     }
 
-    const bundle = buildFilteredAiContextBundle({ charBudget: AI_CONTEXT_CHAR_BUDGET, emitTruncationLog: true });
-    if (bundle.enabledScreenshotIds.length === 0) {
-        showFeedback('No enabled screenshots to analyze', 'error');
+    const payload = buildAskAiContextPayload();
+    if (payload.enabledScreenshotIds.length === 0) {
+        showFeedback('Take a screenshot of the question first', 'error');
         return;
     }
 
@@ -767,12 +840,13 @@ async function analyzeScreenshotsOnly() {
         activeScreenAiStream = stream;
         try {
             setAnalyzing(true);
-            showLoadingOverlay('Analyzing screenshots...');
+            showLoadingOverlay('Answering latest screenshot...');
             stream.start('');
 
             await window.electronAPI.analyzeStealthWithContext({
-                contextString: bundle.contextString,
-                enabledScreenshotIds: bundle.enabledScreenshotIds
+                contextString: '',
+                enabledScreenshotIds: payload.enabledScreenshotIds,
+                latestScreenshotOnly: true
             });
         } catch (error) {
             console.error('Analysis error:', error);
@@ -850,7 +924,7 @@ async function closeApplication() {
 
 async function getResponseSuggestions() {
     if (!hasGeminiApiKeysConfigured) {
-        showFeedback('Gemini API key missing. Add it in Settings.', 'error');
+        showFeedback(getMissingAiKeyMessage(), 'error');
         return;
     }
 
@@ -895,7 +969,7 @@ async function getResponseSuggestions() {
 
 async function generateMeetingNotes() {
     if (!hasGeminiApiKeysConfigured) {
-        showFeedback('Gemini API key missing. Add it in Settings.', 'error');
+        showFeedback(getMissingAiKeyMessage(), 'error');
         return;
     }
 
@@ -940,7 +1014,7 @@ async function generateMeetingNotes() {
 
 async function getConversationInsights() {
     if (!hasGeminiApiKeysConfigured) {
-        showFeedback('Gemini API key missing. Add it in Settings.', 'error');
+        showFeedback(getMissingAiKeyMessage(), 'error');
         return;
     }
 
@@ -1284,6 +1358,7 @@ function setupIpcListeners() {
         transcriptionManager,
         toggleMasterTranscription,
         askAiWithSessionContext,
+        analyzeScreenshotsOnly,
         isAskAiShortcutEnabled: () => Boolean(analyzeBtn && !analyzeBtn.disabled),
         addMonitorLog,
         getActiveScreenAiStream: () => activeScreenAiStream,

@@ -1,9 +1,9 @@
 // AI provider configuration.
-// Supported providers: 'gemini' and 'ollama'.
-const AI_PROVIDERS = ['gemini', 'ollama'];
+// Supported providers: 'gemini', 'grok', 'groq', 'bedrock', and 'ollama'.
+const AI_PROVIDERS = ['gemini', 'grok', 'groq', 'bedrock', 'ollama'];
 const DEFAULT_AI_PROVIDER = 'gemini';
 
-const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434';
+const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
 const DEFAULT_OLLAMA_MODEL = 'llama3.2';
 
 // Gemini model configuration.
@@ -14,6 +14,30 @@ const GEMINI_MODELS = [
   'gemini-3.1-flash-lite-preview',
   'gemini-3.1-pro-preview'
 ];
+
+// Grok / xAI model configuration.
+// The first model in this list is treated as the default model everywhere.
+const GROK_MODELS = [
+  'grok-4.6',
+  'grok-4.5',
+  'grok-4.3'
+];
+
+// Groq model configuration.
+// The first model in this list is treated as the default model everywhere.
+const GROQ_MODELS = [
+  'qwen/qwen3.6-27b',
+  'qwen/qwen3.8-27b',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b'
+];
+
+// AWS Bedrock model configuration.
+// Custom model IDs are allowed; the first entry is the default.
+const BEDROCK_MODELS = [
+  'qwen.qwen3-coder-30b-a3b-v1:0'
+];
+const DEFAULT_BEDROCK_REGION = 'ap-south-1';
 
 // AssemblyAI speech model configuration.
 // The first model in this list is treated as the default model everywhere.
@@ -195,6 +219,75 @@ function resolveGeminiModel(modelName) {
   return isConfiguredGeminiModel(modelName) ? modelName : getDefaultGeminiModel();
 }
 
+// Grok model configuration functions
+function getGrokModels() {
+  if (!Array.isArray(GROK_MODELS) || GROK_MODELS.length === 0) {
+    throw new Error('Grok models are not configured. Add at least one model to src/config.js.');
+  }
+
+  return [...GROK_MODELS];
+}
+
+function getDefaultGrokModel() {
+  return getGrokModels()[0];
+}
+
+function isConfiguredGrokModel(modelName) {
+  return getGrokModels().includes(modelName);
+}
+
+function resolveGrokModel(modelName) {
+  return isConfiguredGrokModel(modelName) ? modelName : getDefaultGrokModel();
+}
+
+// Groq model configuration functions
+function getGroqModels() {
+  if (!Array.isArray(GROQ_MODELS) || GROQ_MODELS.length === 0) {
+    throw new Error('Groq models are not configured. Add at least one model to src/config.js.');
+  }
+
+  return [...GROQ_MODELS];
+}
+
+function getDefaultGroqModel() {
+  return getGroqModels()[0];
+}
+
+function isConfiguredGroqModel(modelName) {
+  return getGroqModels().includes(modelName);
+}
+
+function resolveGroqModel(modelName) {
+  return isConfiguredGroqModel(modelName) ? modelName : getDefaultGroqModel();
+}
+
+// Bedrock model / region configuration functions
+function getBedrockModels() {
+  if (!Array.isArray(BEDROCK_MODELS) || BEDROCK_MODELS.length === 0) {
+    throw new Error('Bedrock models are not configured. Add at least one model to src/config.js.');
+  }
+
+  return [...BEDROCK_MODELS];
+}
+
+function getDefaultBedrockModel() {
+  return getBedrockModels()[0];
+}
+
+function getDefaultBedrockRegion() {
+  return DEFAULT_BEDROCK_REGION;
+}
+
+function resolveBedrockModel(modelName) {
+  const nextModel = String(modelName || '').trim();
+  return nextModel || getDefaultBedrockModel();
+}
+
+function resolveBedrockRegion(regionName) {
+  const nextRegion = String(regionName || '').trim();
+  return nextRegion || getDefaultBedrockRegion();
+}
+
 // Programming language configuration functions
 function getProgrammingLanguages() {
   if (!Array.isArray(PROGRAMMING_LANGUAGES) || PROGRAMMING_LANGUAGES.length === 0) {
@@ -290,6 +383,13 @@ module.exports = {
   getDefaultAssemblyAiSpeechModel,
   getGeminiModels,
   getDefaultGeminiModel,
+  getGrokModels,
+  getDefaultGrokModel,
+  getGroqModels,
+  getDefaultGroqModel,
+  getBedrockModels,
+  getDefaultBedrockModel,
+  getDefaultBedrockRegion,
   getKeyboardShortcutAccelerator,
   getKeyboardShortcutById,
   getKeyboardShortcuts,
@@ -297,8 +397,14 @@ module.exports = {
   getProgrammingLanguages,
   isConfiguredAssemblyAiSpeechModel,
   isConfiguredGeminiModel,
+  isConfiguredGrokModel,
+  isConfiguredGroqModel,
   isConfiguredProgrammingLanguage,
   resolveAssemblyAiSpeechModel,
   resolveGeminiModel,
+  resolveGrokModel,
+  resolveGroqModel,
+  resolveBedrockModel,
+  resolveBedrockRegion,
   resolveProgrammingLanguage
 };

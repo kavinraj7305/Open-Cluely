@@ -128,7 +128,23 @@ async function startApplication() {
       normalizeGeminiApiKeys(appState?.geminiApiKey),
       appState.geminiApiKeyIndex
     );
+    const grokKeyState = geminiRuntime.setGrokKeys(
+      normalizeGeminiApiKeys(appState?.grokApiKey),
+      appState.grokApiKeyIndex
+    );
+    const groqKeyState = geminiRuntime.setGroqKeys(
+      normalizeGeminiApiKeys(appState?.groqApiKey),
+      appState.groqApiKeyIndex
+    );
+    const bedrockKeyState = geminiRuntime.setBedrockKeys(
+      normalizeGeminiApiKeys(appState?.bedrockApiKey),
+      appState.bedrockApiKeyIndex
+    );
     const activeGeminiModel = geminiRuntime.setActiveGeminiModel(appState.geminiModel);
+    const activeGrokModel = geminiRuntime.setActiveGrokModel(appState.grokModel);
+    const activeGroqModel = geminiRuntime.setActiveGroqModel(appState.groqModel);
+    const activeBedrockModel = geminiRuntime.setActiveBedrockModel(appState.bedrockModel);
+    const activeBedrockRegion = geminiRuntime.setActiveBedrockRegion(appState.bedrockRegion);
     const activeOllamaBaseUrl = geminiRuntime.setActiveOllamaBaseUrl(appState.ollamaBaseUrl);
     const activeOllamaModel = geminiRuntime.setActiveOllamaModel(appState.ollamaModel);
     activeAssemblyAiSpeechModel = resolveAssemblyAiSpeechModel(appState.assemblyAiSpeechModel);
@@ -138,7 +154,14 @@ async function startApplication() {
     if (
       appState.aiProvider !== activeAiProvider ||
       appState.geminiApiKeyIndex !== keyState.activeApiKeyIndex ||
+      appState.grokApiKeyIndex !== grokKeyState.activeGrokApiKeyIndex ||
+      appState.groqApiKeyIndex !== groqKeyState.activeGroqApiKeyIndex ||
+      appState.bedrockApiKeyIndex !== bedrockKeyState.activeBedrockApiKeyIndex ||
       appState.geminiModel !== activeGeminiModel ||
+      appState.grokModel !== activeGrokModel ||
+      appState.groqModel !== activeGroqModel ||
+      appState.bedrockModel !== activeBedrockModel ||
+      appState.bedrockRegion !== activeBedrockRegion ||
       appState.ollamaBaseUrl !== activeOllamaBaseUrl ||
       appState.ollamaModel !== activeOllamaModel ||
       appState.assemblyAiSpeechModel !== activeAssemblyAiSpeechModel ||
@@ -148,7 +171,14 @@ async function startApplication() {
       appState = saveAppState(app, {
         aiProvider: activeAiProvider,
         geminiApiKeyIndex: keyState.activeApiKeyIndex,
+        grokApiKeyIndex: grokKeyState.activeGrokApiKeyIndex,
+        groqApiKeyIndex: groqKeyState.activeGroqApiKeyIndex,
+        bedrockApiKeyIndex: bedrockKeyState.activeBedrockApiKeyIndex,
         geminiModel: activeGeminiModel,
+        grokModel: activeGrokModel,
+        groqModel: activeGroqModel,
+        bedrockModel: activeBedrockModel,
+        bedrockRegion: activeBedrockRegion,
         ollamaBaseUrl: activeOllamaBaseUrl,
         ollamaModel: activeOllamaModel,
         assemblyAiSpeechModel: activeAssemblyAiSpeechModel,
@@ -160,7 +190,13 @@ async function startApplication() {
     console.log('Loaded app state from:', getAppStatePath(app));
     console.log('Restored AI provider from app state:', activeAiProvider);
     console.log(`Restored Gemini API key index from app state: ${keyState.activeApiKeyIndex + 1}/${keyState.geminiApiKeys.length}`);
+    console.log(`Restored Grok API key index from app state: ${grokKeyState.activeGrokApiKeyIndex + 1}/${grokKeyState.grokApiKeys.length}`);
+    console.log(`Restored Groq API key index from app state: ${groqKeyState.activeGroqApiKeyIndex + 1}/${groqKeyState.groqApiKeys.length}`);
+    console.log(`Restored Bedrock API key index from app state: ${bedrockKeyState.activeBedrockApiKeyIndex + 1}/${bedrockKeyState.bedrockApiKeys.length}`);
     console.log('Restored Gemini model from app state:', activeGeminiModel);
+    console.log('Restored Grok model from app state:', activeGrokModel);
+    console.log('Restored Groq model from app state:', activeGroqModel);
+    console.log('Restored Bedrock model from app state:', activeBedrockModel, 'in', activeBedrockRegion);
     console.log('Restored Ollama config from app state:', activeOllamaModel, 'at', activeOllamaBaseUrl);
     console.log('Restored AssemblyAI speech model from app state:', activeAssemblyAiSpeechModel);
     console.log('Restored programming language from app state:', activeProgrammingLanguage);
@@ -264,19 +300,34 @@ async function startApplication() {
       console.log(`Persisted Gemini API key index: ${nextIndex + 1}/${geminiRuntime.getApiKeys().length}`);
     });
 
-    if (geminiRuntime.getActiveAiProvider() === 'ollama') {
-      geminiRuntime.initializeOllamaService(
-        geminiRuntime.getActiveOllamaBaseUrl(),
-        geminiRuntime.getActiveOllamaModel(),
-        geminiRuntime.getActiveProgrammingLanguage()
-      );
-    } else {
-      geminiRuntime.initializeGeminiService(
-        geminiRuntime.getActiveApiKey(),
-        geminiRuntime.getActiveGeminiModel(),
-        geminiRuntime.getActiveProgrammingLanguage()
-      );
-    }
+    geminiRuntime.setActiveGrokKeyIndexChangeHandler((nextIndex) => {
+      if (!appState || appState.grokApiKeyIndex === nextIndex) {
+        return;
+      }
+
+      appState = saveAppState(app, { grokApiKeyIndex: nextIndex });
+      console.log(`Persisted Grok API key index: ${nextIndex + 1}/${geminiRuntime.getGrokApiKeys().length}`);
+    });
+
+    geminiRuntime.setActiveGroqKeyIndexChangeHandler((nextIndex) => {
+      if (!appState || appState.groqApiKeyIndex === nextIndex) {
+        return;
+      }
+
+      appState = saveAppState(app, { groqApiKeyIndex: nextIndex });
+      console.log(`Persisted Groq API key index: ${nextIndex + 1}/${geminiRuntime.getGroqApiKeys().length}`);
+    });
+
+    geminiRuntime.setActiveBedrockKeyIndexChangeHandler((nextIndex) => {
+      if (!appState || appState.bedrockApiKeyIndex === nextIndex) {
+        return;
+      }
+
+      appState = saveAppState(app, { bedrockApiKeyIndex: nextIndex });
+      console.log(`Persisted Bedrock API key index: ${nextIndex + 1}/${geminiRuntime.getBedrockApiKeys().length}`);
+    });
+
+    geminiRuntime.initializeAiService();
 
     app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder');
     app.commandLine.appendSwitch('ignore-certificate-errors');

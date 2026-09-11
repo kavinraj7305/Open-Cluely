@@ -11,6 +11,7 @@ export function setupIpcListeners({
     transcriptionManager,
     toggleMasterTranscription,
     askAiWithSessionContext,
+    analyzeScreenshotsOnly,
     isAskAiShortcutEnabled,
     addMonitorLog,
     getActiveScreenAiStream,
@@ -117,6 +118,16 @@ export function setupIpcListeners({
             askAiWithSessionContext().catch((error) => {
                 console.error('Global Ask AI trigger failed:', error);
                 addMonitorLog('error', 'shortcut-ask-ai-failed', error.message);
+            });
+        });
+    }
+
+    if (windowApi.onTriggerScreenAi) {
+        windowApi.onTriggerScreenAi(() => {
+            addMonitorLog('info', 'shortcut-event', 'Global Screen AI shortcut triggered');
+            analyzeScreenshotsOnly?.().catch((error) => {
+                console.error('Global Screen AI trigger failed:', error);
+                addMonitorLog('error', 'shortcut-screen-ai-failed', error.message);
             });
         });
     }

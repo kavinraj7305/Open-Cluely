@@ -1,6 +1,7 @@
 ﻿const fs = require('fs');
 const path = require('path');
 const screenshot = require('screenshot-desktop');
+const { ocrImageFiles } = require('../../../services/ocr/windows-ocr');
 
 function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendToRenderer }) {
   let screenshots = [];
@@ -118,8 +119,8 @@ function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendTo
     }
   }
 
-  async function buildImagePartsFromScreenshots({ strict = true, includeIds = null } = {}) {
-    const includeIdSet = Array.isArray(includeIds)
+  async function buildImagePartsFromScreenshots({ strict = true, includeIds = null, latestOnly = false } = {}) {
+    const includeIdSet = !latestOnly && Array.isArray(includeIds)
       ? new Set(includeIds.filter((id) => typeof id === 'string' && id.trim().length > 0))
       : null;
 
@@ -144,7 +145,11 @@ function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendTo
       }
     }
 
-    const imageParts = usableEntries.map((entry) => {
+    const selectedEntries = latestOnly && usableEntries.length > 1
+      ? usableEntries.slice(-1)
+      : usableEntries;
+
+    const imageParts = selectedEntries.map((entry) => {
       const imageData = fs.readFileSync(entry.path);
       return {
         inlineData: {
@@ -156,7 +161,24 @@ function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendTo
 
     return {
       imageParts,
-      entries: usableEntries
+      entries: selectedEntries
+    };
+  }
+
+  async function extractOcrTextFromScreenshots({ strict = false, includeIds = null, latestOnly = false } = {}) {
+    const { entries } = await buildImagePartsFromScreenshots({ strict, includeIds, latestOnly });
+    const ocrResult = await ocrImageFiles(entries.map((entry) => entry.path));
+    const files = (ocrResult.files || []).map((file, index) => ({
+      id: entries[index]?.id || null,
+      file: file.file,
+      chars: file.chars,
+      ms: file.ms,
+      text: file.text
+    }));
+    console.log(`Screenshot OCR extracted ${ocrResult.ocrText.length} chars from ${entries.length} image(s)`);
+    return {
+      ocrText: ocrResult.ocrText,
+      files
     };
   }
 
@@ -191,6 +213,7 @@ function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendTo
 
   return {
     buildImagePartsFromScreenshots,
+    extractOcrTextFromScreenshots,
     cleanupTransientResources,
     clearStealth,
     getScreenshotsCount,

@@ -394,6 +394,16 @@ function createWindowController({
       sendToRenderer('trigger-ask-ai');
     });
 
+    registerShortcut('screenAi', () => {
+      if (typeof emitSttDebug === 'function') {
+        emitSttDebug({
+          event: 'shortcut-screen-ai',
+          message: 'Global Screen AI shortcut triggered'
+        });
+      }
+      sendToRenderer('trigger-screen-ai');
+    });
+
     registerShortcut('emergencyHide', () => {
       emergencyHide();
     });
