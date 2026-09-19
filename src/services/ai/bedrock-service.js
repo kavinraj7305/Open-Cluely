@@ -141,11 +141,12 @@ class BedrockService {
     const id = String(this.modelName || '').toLowerCase();
     return (
       id.includes('claude') ||
-      id.includes('nova-pro') ||
-      id.includes('nova-lite') ||
+      id.includes('nova') ||
       id.includes('pixtral') ||
       id.includes('llama3-2') ||
-      id.includes('gpt-4o')
+      id.includes('llama-3.2') ||
+      id.includes('gpt-4o') ||
+      id.includes('qwen') && id.includes('vl')
     );
   }
 
@@ -434,28 +435,16 @@ class BedrockService {
   }
 
   async analyzeScreenshots(imageParts, additionalContext = '', options = {}) {
-    const contextString = typeof options.contextStringOverride === 'string'
-      ? options.contextStringOverride
-      : this.getContextString();
-    const limitedImageParts = this.modelSupportsImages() && Array.isArray(imageParts)
-      ? imageParts.slice(-BEDROCK_MAX_IMAGES)
-      : [];
-    const ocrBlock = this._buildOcrBlock(options.ocrText);
     const prompt = buildScreenshotAnalysisPrompt({
-      contextString,
-      additionalContext,
+      contextString: '',
+      additionalContext: '',
       programmingLanguage: this.programmingLanguage,
-      screenshotCount: Array.isArray(imageParts) ? imageParts.length : 0
+      screenshotCount: 1,
+      ocrText: options.ocrText || ''
     });
 
     const streamOptions = { onChunk: options.onChunk, requestId: options.requestId };
-    const result = await this.generateMultimodal([
-      { text: prompt },
-      ...(ocrBlock ? [ocrBlock] : []),
-      ...limitedImageParts
-    ], streamOptions);
-
-    return result;
+    return this.generateText(prompt, streamOptions);
   }
 
   async analyzeScreenshot(imageBase64, additionalContext = '') {
@@ -466,47 +455,22 @@ class BedrockService {
   }
 
   async askAiWithSessionContext(options = {}) {
-    const contextString = typeof options.contextString === 'string'
-      ? options.contextString
-      : this.getContextString();
     const prompt = buildAskAiSessionPrompt({
-      contextString,
-      transcriptContext: options.transcriptContext || '',
-      sessionSummary: options.sessionSummary || '',
-      screenshotCount: options.screenshotCount || 0,
-      mode: options.mode || 'best-next-answer'
+      contextString: '',
+      transcriptContext: '',
+      sessionSummary: '',
+      screenshotCount: options.screenshotCount || (options.ocrText ? 1 : 0),
+      programmingLanguage: this.programmingLanguage,
+      answerMode: options.answerMode || options.mode,
+      ocrText: options.ocrText || ''
     });
 
     const streamOptions = { onChunk: options.onChunk, requestId: options.requestId };
-    const result = await this.generateText(prompt, streamOptions);
-    this.addToHistory('assistant', `Ask AI: ${result}`);
-    return result;
+    return this.generateText(prompt, streamOptions);
   }
 
-  async askAiWithSessionContextAndScreenshots(imageParts, options = {}) {
-    const contextString = typeof options.contextString === 'string'
-      ? options.contextString
-      : this.getContextString();
-    const limitedImageParts = this.modelSupportsImages() && Array.isArray(imageParts)
-      ? imageParts.slice(-BEDROCK_MAX_IMAGES)
-      : [];
-    const ocrBlock = this._buildOcrBlock(options.ocrText);
-    const prompt = buildAskAiSessionPrompt({
-      contextString,
-      transcriptContext: options.transcriptContext || '',
-      sessionSummary: options.sessionSummary || '',
-      screenshotCount: Array.isArray(imageParts) ? imageParts.length : 0,
-      mode: options.mode || 'best-next-answer'
-    });
-
-    const streamOptions = { onChunk: options.onChunk, requestId: options.requestId };
-    const result = await this.generateMultimodal([
-      { text: prompt },
-      ...(ocrBlock ? [ocrBlock] : []),
-      ...limitedImageParts
-    ], streamOptions);
-
-    return result;
+  async askAiWithSessionContextAndScreenshots(_imageParts, options = {}) {
+    return this.askAiWithSessionContext(options);
   }
 
   async suggestResponse(context, options = {}) {

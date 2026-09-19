@@ -34,8 +34,12 @@ const GROQ_MODELS = [
 
 // AWS Bedrock model configuration.
 // Custom model IDs are allowed; the first entry is the default.
+// Screenshot answers always send OCR from the latest screenshot only.
 const BEDROCK_MODELS = [
-  'qwen.qwen3-coder-30b-a3b-v1:0'
+  'qwen.qwen3-coder-30b-a3b-v1:0',
+  'amazon.nova-lite-v1:0',
+  'amazon.nova-pro-v1:0',
+  'anthropic.claude-3-5-sonnet-20241022-v2:0'
 ];
 const DEFAULT_BEDROCK_REGION = 'ap-south-1';
 
@@ -67,109 +71,121 @@ const KEYBOARD_SHORTCUTS = [
     id: 'toggleTranscription',
     buttonLabel: 'Transcription',
     description: 'Toggle transcription master control',
-    accelerator: 'Alt+Shift+T'
+    accelerator: 'Ctrl+Shift+T'
   },
   {
     id: 'takeScreenshot',
     buttonLabel: 'Screenshot',
     description: 'Capture screenshot',
-    accelerator: 'Alt+Shift+S'
+    accelerator: 'Ctrl+Shift+S'
   },
   {
     id: 'askAi',
     buttonLabel: 'Ask AI',
-    description: 'Uses only enabled transcript, enabled screenshots, and enabled chat context',
-    accelerator: 'Alt+Shift+A'
+    description: 'After a screenshot: aptitude / CS fundamentals answer (MCQ, OS, DBMS, CN, DSA theory)',
+    accelerator: 'Ctrl+A'
+  },
+  {
+    id: 'codingAi',
+    buttonLabel: 'Code',
+    description: 'After a screenshot: Python coding answer with comments, approach, and complexity',
+    accelerator: 'Ctrl+Shift+C'
   },
   {
     id: 'screenAi',
     buttonLabel: 'Screen AI',
     description: 'Analyzes only enabled screenshots selected in chat',
-    accelerator: 'Alt+Shift+E'
+    accelerator: 'Ctrl+Shift+E'
   },
   {
     id: 'suggest',
     buttonLabel: 'Suggest',
     description: 'Uses only enabled transcript context to suggest what to say next',
-    accelerator: 'Alt+Shift+G'
+    accelerator: 'Ctrl+Shift+G'
   },
   {
     id: 'notes',
     buttonLabel: 'Notes',
     description: 'Generates notes from only enabled context',
-    accelerator: 'Alt+Shift+N'
+    accelerator: 'Ctrl+Shift+N'
   },
   {
     id: 'insights',
     buttonLabel: 'Insights',
     description: 'Finds key insights from only enabled context',
-    accelerator: 'Alt+Shift+I'
+    accelerator: 'Ctrl+Shift+I'
   },
   {
     id: 'clearChat',
     buttonLabel: 'Clear Chat',
     description: 'Clears chat, screenshots, and AI history',
-    accelerator: 'Alt+Shift+C'
+    accelerator: 'Ctrl+Shift+Backspace'
+  },
+  {
+    id: 'quitApp',
+    buttonLabel: 'Quit',
+    description: 'Quit the application',
+    accelerator: 'Ctrl+Q'
   },
   {
     id: 'emergencyHide',
     buttonLabel: 'Hide',
     description: 'Emergency hide',
-    accelerator: 'Alt+Shift+X'
+    accelerator: 'Ctrl+Shift+X'
   },
   {
     id: 'toggleStealth',
     buttonLabel: 'Toggle Stealth',
     description: 'Toggle stealth mode',
-    accelerator: 'Alt+Shift+H'
+    accelerator: 'Ctrl+Shift+H'
   },
   {
     id: 'moveWindowLeft',
     buttonLabel: 'Move Window Left',
     description: 'Move window to left side',
-    accelerator: 'Alt+Shift+Left'
+    accelerator: 'Ctrl+Shift+Left'
   },
   {
     id: 'moveWindowRight',
     buttonLabel: 'Move Window Right',
     description: 'Move window to right side',
-    accelerator: 'Alt+Shift+Right'
+    accelerator: 'Ctrl+Shift+Right'
   },
   {
     id: 'moveWindowUp',
     buttonLabel: 'Move Window Up',
     description: 'Move window to top',
-    accelerator: 'Alt+Shift+Up'
+    accelerator: 'Ctrl+Shift+Up'
   },
   {
     id: 'moveWindowDown',
     buttonLabel: 'Move Window Down',
     description: 'Move window to bottom',
-    accelerator: 'Alt+Shift+Down'
+    accelerator: 'Ctrl+Shift+Down'
   },
   {
     id: 'windowSizePreset1',
     buttonLabel: 'Size Preset 1',
     description: 'Resize window to minimum size',
-    accelerator: 'Alt+Shift+1'
+    accelerator: 'Ctrl+Shift+1'
   },
   {
     id: 'windowSizePreset2',
     buttonLabel: 'Size Preset 2',
     description: 'Resize window to +25% from minimum size',
-    accelerator: 'Alt+Shift+2'
+    accelerator: 'Ctrl+Shift+2'
   },
   {
     id: 'windowSizePreset3',
     buttonLabel: 'Size Preset 3',
     description: 'Resize window to +50% from minimum size',
-    accelerator: 'Alt+Shift+3'
+    accelerator: 'Ctrl+Shift+3'
   },
   {
     id: 'windowSizePreset4',
     buttonLabel: 'Size Preset 4',
     description: 'Resize window to +75% from minimum size',
-    accelerator: 'Alt+Shift+4'
+    accelerator: 'Ctrl+Shift+4'
   }
 ];
 

@@ -18,7 +18,8 @@ function createWindowController({
   getAppEnvironment,
   emitSttDebug,
   sendToRenderer,
-  onTakeStealthScreenshot
+  onTakeStealthScreenshot,
+  onQuitApplication
 }) {
   let mainWindow = null;
   let isVisible = true;
@@ -392,6 +393,22 @@ function createWindowController({
         });
       }
       sendToRenderer('trigger-ask-ai');
+    });
+
+    registerShortcut('codingAi', () => {
+      if (typeof emitSttDebug === 'function') {
+        emitSttDebug({
+          event: 'shortcut-coding-ai',
+          message: 'Global Code shortcut triggered'
+        });
+      }
+      sendToRenderer('trigger-coding-ai');
+    });
+
+    registerShortcut('quitApp', () => {
+      if (typeof onQuitApplication === 'function') {
+        onQuitApplication();
+      }
     });
 
     registerShortcut('screenAi', () => {

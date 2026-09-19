@@ -119,7 +119,7 @@ function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendTo
     }
   }
 
-  async function buildImagePartsFromScreenshots({ strict = true, includeIds = null, latestOnly = false } = {}) {
+  function getSelectedScreenshotEntries({ strict = true, includeIds = null, latestOnly = false } = {}) {
     const includeIdSet = !latestOnly && Array.isArray(includeIds)
       ? new Set(includeIds.filter((id) => typeof id === 'string' && id.trim().length > 0))
       : null;
@@ -145,10 +145,13 @@ function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendTo
       }
     }
 
-    const selectedEntries = latestOnly && usableEntries.length > 1
+    return latestOnly && usableEntries.length > 1
       ? usableEntries.slice(-1)
       : usableEntries;
+  }
 
+  async function buildImagePartsFromScreenshots(options = {}) {
+    const selectedEntries = getSelectedScreenshotEntries(options);
     const imageParts = selectedEntries.map((entry) => {
       const imageData = fs.readFileSync(entry.path);
       return {
@@ -165,8 +168,8 @@ function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendTo
     };
   }
 
-  async function extractOcrTextFromScreenshots({ strict = false, includeIds = null, latestOnly = false } = {}) {
-    const { entries } = await buildImagePartsFromScreenshots({ strict, includeIds, latestOnly });
+  async function extractOcrTextFromScreenshots(options = {}) {
+    const entries = getSelectedScreenshotEntries(options);
     const ocrResult = await ocrImageFiles(entries.map((entry) => entry.path));
     const files = (ocrResult.files || []).map((file, index) => ({
       id: entries[index]?.id || null,
@@ -178,7 +181,8 @@ function createScreenshotManager({ app, getMainWindow, getAppEnvironment, sendTo
     console.log(`Screenshot OCR extracted ${ocrResult.ocrText.length} chars from ${entries.length} image(s)`);
     return {
       ocrText: ocrResult.ocrText,
-      files
+      files,
+      entries
     };
   }
 

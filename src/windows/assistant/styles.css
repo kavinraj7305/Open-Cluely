@@ -526,6 +526,19 @@ body {
   box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
 }
 
+.action-btn.coding-ai-btn {
+  background: rgba(16, 185, 129, 0.82);
+  border-color: rgba(16, 185, 129, 0.92);
+  color: white;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+.action-btn.coding-ai-btn:hover {
+  background: rgba(5, 150, 105, 0.92);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+}
+
 .action-btn.screen-ai-btn {
   background: rgba(14, 165, 233, 0.28);
   border-color: rgba(14, 165, 233, 0.5);
@@ -1994,6 +2007,7 @@ body.theme-dark .action-btn:hover {
 }
 
 body.theme-dark .action-btn.analyze-btn,
+body.theme-dark .action-btn.coding-ai-btn,
 body.theme-dark .action-btn.transcription-btn.active,
 body.theme-dark .action-btn.transcription-btn.listening,
 body.theme-dark .action-btn.transcription-btn.connecting {

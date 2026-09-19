@@ -76,6 +76,11 @@ function createEventActions(ipcRenderer) {
     label: 'onTriggerAskAi'
   });
 
+  const onTriggerCodingAi = createEventListener(ipcRenderer, {
+    channel: 'trigger-coding-ai',
+    label: 'onTriggerCodingAi'
+  });
+
   const onTriggerScreenAi = createEventListener(ipcRenderer, {
     channel: 'trigger-screen-ai',
     label: 'onTriggerScreenAi'
@@ -130,6 +135,7 @@ function createEventActions(ipcRenderer) {
     onAiStreamEnd,
     onToggleVoiceRecognition,
     onTriggerAskAi,
+    onTriggerCodingAi,
     onTriggerScreenAi,
     onSttDebug: (callback) => rawOnSttDebug((data) => callback(data || {})),
     onMobileServerStatus,

@@ -150,6 +150,24 @@ function registerAssistantIpc({
     return message ? `${fallbackPrefix}: ${message}` : fallbackPrefix;
   }
 
+  async function readLatestScreenshotOcr(enabledScreenshotIds, { strict = false } = {}) {
+    const ocrResult = await screenshotManager.extractOcrTextFromScreenshots({
+      strict,
+      includeIds: enabledScreenshotIds,
+      latestOnly: true
+    });
+    const entries = ocrResult.entries || [];
+    const ocrText = String(ocrResult.ocrText || '').trim();
+
+    return {
+      entries,
+      ocrText,
+      files: ocrResult.files || [],
+      screenshotFiles: entries.map((entry) => path.basename(entry.path || '')),
+      screenshotIds: entries.map((entry) => entry.id)
+    };
+  }
+
   async function analyzeForMeetingWithContext(contextInput = '') {
     const payload = typeof contextInput === 'object' && contextInput !== null
       ? contextInput
@@ -169,7 +187,7 @@ function registerAssistantIpc({
     console.log('Model initialized:', !!(geminiRuntime.getService() && geminiRuntime.getService().model));
     console.log('Programming language preference:', serviceSnapshot.programmingLanguage);
     console.log('Screenshots count:', screenshotManager.getScreenshotsCount());
-    logAiEvent(requestId, `Screen AI start provider=${serviceSnapshot.provider} model=${serviceSnapshot.model} latestScreenshotOnly=true screenshots=${screenshotManager.getScreenshotsCount()}`);
+    logAiEvent(requestId, `Screen AI start provider=${serviceSnapshot.provider} model=${serviceSnapshot.model} latestScreenshotOcrOnly=true`);
 
     if (!geminiRuntime.isAiConfigured()) {
       sendToRenderer('analysis-result', {
@@ -188,28 +206,27 @@ function registerAssistantIpc({
     try {
       sendToRenderer('analysis-start');
 
-      const { imageParts, entries } = await screenshotManager.buildImagePartsFromScreenshots({
-        strict: true,
-        includeIds: enabledScreenshotIds,
-        latestOnly: true
-      });
+      const {
+        entries,
+        ocrText,
+        files: ocrFiles,
+        screenshotFiles,
+        screenshotIds
+      } = await readLatestScreenshotOcr(enabledScreenshotIds, { strict: true });
 
-      if (imageParts.length === 0) {
+      if (!entries.length) {
         sendToRenderer('analysis-result', {
           error: 'No enabled screenshots selected for analysis.'
         });
         return;
       }
 
-      const needsOcr = geminiRuntime.getService()?.modelSupportsImages?.() === false;
-      const ocrResult = needsOcr
-        ? await screenshotManager.extractOcrTextFromScreenshots({
-          strict: true,
-          includeIds: enabledScreenshotIds,
-          latestOnly: true
-        })
-        : { ocrText: '', files: [] };
-      const ocrText = ocrResult.ocrText || '';
+      if (!ocrText) {
+        sendToRenderer('analysis-result', {
+          error: 'Could not read text from the latest screenshot. Capture the question again.'
+        });
+        return;
+      }
 
       const onChunk = ({ text, index }) => {
         sendToRenderer('ai-stream-chunk', { actionId: 'screenAi', text, index });
@@ -222,17 +239,10 @@ function registerAssistantIpc({
         }
 
         return geminiService.analyzeScreenshots(
-          imageParts,
+          [],
           '',
           { contextStringOverride: '', ocrText, onChunk, requestId }
         );
-      });
-
-      chatContext.push({
-        type: 'analysis',
-        content: text,
-        timestamp: new Date().toISOString(),
-        screenshotCount: imageParts.length
       });
 
       logAiRequest({
@@ -241,12 +251,12 @@ function registerAssistantIpc({
         status: 'ok',
         ms: Date.now() - startedAt,
         ...serviceSnapshot,
-        screenshotCount: imageParts.length,
-        screenshotIds: (entries || []).map((entry) => entry.id),
-        screenshotFiles: (entries || []).map((entry) => path.basename(entry.path || '')),
-        needsOcr,
+        screenshotCount: 1,
+        screenshotIds,
+        screenshotFiles,
+        needsOcr: true,
         ocrChars: ocrText.length,
-        ocrFiles: (ocrResult.files || []).map((file) => ({
+        ocrFiles: (ocrFiles || []).map((file) => ({
           id: file.id,
           file: file.file,
           chars: file.chars,
@@ -254,9 +264,9 @@ function registerAssistantIpc({
           text: clip(file.text)
         })),
         ocrText: clip(ocrText),
-        contextChars: contextString.length,
-        contextString: clip(contextString),
-        chatContextCount: chatContext.length,
+        contextChars: 0,
+        contextString: '',
+        chatContextCount: 0,
         responseChars: String(text || '').length,
         responseText: clip(text)
       });
@@ -272,7 +282,7 @@ function registerAssistantIpc({
         status: 'error',
         ms: Date.now() - startedAt,
         ...serviceSnapshot,
-        needsOcr: geminiRuntime.getService()?.modelSupportsImages?.() === false,
+        needsOcr: true,
         contextString: clip(contextString),
         error: String(error?.message || error)
       });
@@ -326,11 +336,12 @@ function registerAssistantIpc({
   });
 
   ipcMain.handle('ask-ai-with-session-context', async (_event, payload = {}) => {
-    const mode = payload?.mode === 'best-next-answer' ? 'best-next-answer' : 'best-next-answer';
     const requestId = createRequestId('askAi');
     const startedAt = Date.now();
     const serviceSnapshot = getActiveServiceSnapshot();
-    logAiEvent(requestId, `Ask AI start provider=${serviceSnapshot.provider} model=${serviceSnapshot.model} latestScreenshotOnly=true`);
+    const answerMode = payload?.answerMode === 'coding' ? 'coding' : 'aptitude';
+    const streamActionId = answerMode === 'coding' ? 'codingAi' : 'askAi';
+    logAiEvent(requestId, `Ask AI start provider=${serviceSnapshot.provider} model=${serviceSnapshot.model} answerMode=${answerMode} latestScreenshotOcrOnly=true`);
     geminiRuntime.getService()?.clearHistory?.();
 
     try {
@@ -351,86 +362,66 @@ function registerAssistantIpc({
         return {
           success: false,
           error: 'No screenshot to answer. Capture the question first.',
-          mode,
+          mode: answerMode,
           usedScreenshots: false
         };
       }
 
       const onChunk = ({ text, index }) => {
-        sendToRenderer('ai-stream-chunk', { actionId: 'askAi', text, index });
+        sendToRenderer('ai-stream-chunk', { actionId: streamActionId, text, index });
       };
-      sendToRenderer('ai-stream-start', { actionId: 'askAi' });
+      sendToRenderer('ai-stream-start', { actionId: streamActionId });
 
-      let usedScreenshots = false;
-      let usedScreenshotCount = 0;
-      let text = '';
-      let ocrText = '';
-      let ocrFiles = [];
-      let screenshotFiles = [];
-      let screenshotIds = [];
-      const needsOcr = geminiRuntime.getService()?.modelSupportsImages?.() === false;
+      const {
+        entries,
+        ocrText,
+        files: ocrFiles,
+        screenshotFiles,
+        screenshotIds
+      } = await readLatestScreenshotOcr(enabledScreenshotIds, { strict: false });
 
-      if (screenshotManager.hasScreenshots()) {
-        const { imageParts, entries } = await screenshotManager.buildImagePartsFromScreenshots({
-          strict: false,
-          includeIds: enabledScreenshotIds,
-          latestOnly: true
-        });
-
-        if (imageParts.length > 0) {
-          usedScreenshots = true;
-          usedScreenshotCount = imageParts.length;
-          screenshotFiles = (entries || []).map((entry) => path.basename(entry.path || ''));
-          screenshotIds = (entries || []).map((entry) => entry.id);
-          const ocrResult = needsOcr
-            ? await screenshotManager.extractOcrTextFromScreenshots({
-              strict: false,
-              includeIds: enabledScreenshotIds,
-              latestOnly: true
-            })
-            : { ocrText: '', files: [] };
-          ocrText = ocrResult.ocrText || '';
-          ocrFiles = ocrResult.files || [];
-          text = await geminiRuntime.executeWithKeyFailover((geminiService) => {
-            if (!geminiService) {
-              throw new Error('AI model not initialized. Please check your API key.');
-            }
-
-            return geminiService.askAiWithSessionContextAndScreenshots(imageParts, {
-              contextString: '',
-              transcriptContext: '',
-              sessionSummary: '',
-              screenshotCount: imageParts.length,
-              ocrText,
-              mode,
-              onChunk,
-              requestId
-            });
-          });
-        }
+      if (!entries.length) {
+        throw new Error('Could not read the latest screenshot. Capture the question again.');
       }
+
+      if (!ocrText) {
+        throw new Error('Could not read text from the latest screenshot. Capture the question again.');
+      }
+
+      const usedScreenshots = true;
+      const usedScreenshotCount = 1;
+      const text = await geminiRuntime.executeWithKeyFailover((geminiService) => {
+        if (!geminiService) {
+          throw new Error('AI model not initialized. Please check your API key.');
+        }
+
+        return geminiService.askAiWithSessionContext({
+          contextString: '',
+          transcriptContext: '',
+          sessionSummary: '',
+          screenshotCount: 1,
+          ocrText,
+          mode: answerMode,
+          answerMode,
+          onChunk,
+          requestId
+        });
+      });
 
       if (!text) {
         throw new Error('Could not read the latest screenshot. Capture the question again.');
       }
 
-      chatContext.push({
-        type: 'ask-ai',
-        content: text,
-        timestamp: new Date().toISOString(),
-        screenshotCount: usedScreenshots ? usedScreenshotCount : 0
-      });
-
       logAiRequest({
         requestId,
-        action: 'askAi',
+        action: streamActionId,
         status: 'ok',
         ms: Date.now() - startedAt,
         ...serviceSnapshot,
         screenshotCount: usedScreenshotCount,
         screenshotIds,
         screenshotFiles,
-        needsOcr,
+        needsOcr: true,
         ocrChars: ocrText.length,
         ocrFiles: ocrFiles.map((file) => ({
           id: file.id,
@@ -440,33 +431,33 @@ function registerAssistantIpc({
           text: clip(file.text)
         })),
         ocrText: clip(ocrText),
-        contextChars: contextString.length,
-        contextString: clip(contextString),
-        transcriptChars: transcriptContext.length,
-        transcriptContext: clip(transcriptContext),
-        sessionSummary: clip(sessionSummary),
-        chatContextCount: chatContext.length,
+        contextChars: 0,
+        contextString: '',
+        transcriptChars: 0,
+        transcriptContext: '',
+        sessionSummary: '',
+        chatContextCount: 0,
         responseChars: String(text || '').length,
         responseText: clip(text)
       });
 
-      sendToRenderer('ai-stream-end', { actionId: 'askAi' });
-      return { success: true, text, mode, usedScreenshots };
+      sendToRenderer('ai-stream-end', { actionId: streamActionId });
+      return { success: true, text, mode: answerMode, usedScreenshots };
     } catch (error) {
       console.error('Error in ask-ai-with-session-context:', error);
       logAiRequest({
         requestId,
-        action: 'askAi',
+        action: streamActionId,
         status: 'error',
         ms: Date.now() - startedAt,
         ...serviceSnapshot,
         error: String(error?.message || error)
       });
-      sendToRenderer('ai-stream-end', { actionId: 'askAi' });
+      sendToRenderer('ai-stream-end', { actionId: streamActionId });
       return {
         success: false,
         error: mapGeminiErrorMessage(error, 'Ask AI failed'),
-        mode,
+        mode: answerMode,
         usedScreenshots: false
       };
     }

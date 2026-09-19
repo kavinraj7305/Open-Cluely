@@ -185,15 +185,20 @@ function createMobileServer({ getGeminiRuntime, getScreenshotManager, notifyDesk
               let text = '';
 
               if (screenshotManager && screenshotManager.hasScreenshots()) {
-                const { imageParts } = await screenshotManager.buildImagePartsFromScreenshots({ strict: false });
-                if (imageParts.length > 0) {
+                const ocrResult = await screenshotManager.extractOcrTextFromScreenshots({
+                  strict: false,
+                  latestOnly: true
+                });
+                const ocrText = String(ocrResult?.ocrText || '').trim();
+                if (ocrText) {
                   text = await geminiRuntime.executeWithKeyFailover((svc) => {
                     if (!svc) throw new Error('AI model not initialized');
-                    return svc.askAiWithSessionContextAndScreenshots(imageParts, {
-                      contextString,
+                    return svc.askAiWithSessionContext({
+                      contextString: '',
                       transcriptContext: '',
                       sessionSummary: '',
-                      screenshotCount: imageParts.length,
+                      screenshotCount: 1,
+                      ocrText,
                       onChunk
                     });
                   });

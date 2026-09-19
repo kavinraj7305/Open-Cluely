@@ -2,6 +2,7 @@ export function setupEventListeners({
     windowApi,
     screenshotBtn,
     analyzeBtn,
+    codingAiBtn,
     screenAiBtn,
     clearBtn,
     hideBtn,
@@ -30,6 +31,7 @@ export function setupEventListeners({
     updateWindowOpacityValueLabel,
     takeStealthScreenshot,
     askAiWithSessionContext,
+    askCodingAi,
     analyzeScreenshotsOnly,
     clearStealthData,
     emergencyHide,
@@ -54,7 +56,8 @@ export function setupEventListeners({
     saveSettings
 }) {
     if (screenshotBtn) screenshotBtn.addEventListener('click', takeStealthScreenshot);
-    if (analyzeBtn) analyzeBtn.addEventListener('click', askAiWithSessionContext);
+    if (analyzeBtn) analyzeBtn.addEventListener('click', () => askAiWithSessionContext('aptitude'));
+    if (codingAiBtn) codingAiBtn.addEventListener('click', askCodingAi);
     if (screenAiBtn) screenAiBtn.addEventListener('click', analyzeScreenshotsOnly);
     if (clearBtn) clearBtn.addEventListener('click', clearStealthData);
     if (hideBtn) hideBtn.addEventListener('click', emergencyHide);
@@ -184,6 +187,18 @@ export function setupEventListeners({
         if (isShortcutPressed?.(event, 'askAi')) {
             event.preventDefault();
             addMonitorLog('info', 'shortcut-local', 'Local Ask AI shortcut captured; awaiting global Ask AI event');
+            return;
+        }
+
+        if (isShortcutPressed?.(event, 'codingAi')) {
+            event.preventDefault();
+            addMonitorLog('info', 'shortcut-local', 'Local Code shortcut captured; awaiting global Code event');
+            return;
+        }
+
+        if (isShortcutPressed?.(event, 'quitApp')) {
+            event.preventDefault();
+            closeApplication();
             return;
         }
 

@@ -11,8 +11,10 @@ export function setupIpcListeners({
     transcriptionManager,
     toggleMasterTranscription,
     askAiWithSessionContext,
+    askCodingAi,
     analyzeScreenshotsOnly,
     isAskAiShortcutEnabled,
+    isCodingAiShortcutEnabled,
     addMonitorLog,
     getActiveScreenAiStream,
     clearActiveScreenAiStream
@@ -115,9 +117,24 @@ export function setupIpcListeners({
             }
 
             addMonitorLog('info', 'shortcut-event', 'Global Ask AI shortcut triggered');
-            askAiWithSessionContext().catch((error) => {
+            askAiWithSessionContext?.('aptitude').catch((error) => {
                 console.error('Global Ask AI trigger failed:', error);
                 addMonitorLog('error', 'shortcut-ask-ai-failed', error.message);
+            });
+        });
+    }
+
+    if (windowApi.onTriggerCodingAi) {
+        windowApi.onTriggerCodingAi(() => {
+            if (typeof isCodingAiShortcutEnabled === 'function' && !isCodingAiShortcutEnabled()) {
+                addMonitorLog('info', 'shortcut-coding-ai-blocked', 'Global Code shortcut ignored because Code is disabled');
+                return;
+            }
+
+            addMonitorLog('info', 'shortcut-event', 'Global Code shortcut triggered');
+            askCodingAi?.().catch((error) => {
+                console.error('Global Code trigger failed:', error);
+                addMonitorLog('error', 'shortcut-coding-ai-failed', error.message);
             });
         });
     }

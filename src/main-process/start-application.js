@@ -110,6 +110,9 @@ async function startApplication() {
       if (screenshotManager) {
         await screenshotManager.takeStealthScreenshot();
       }
+    },
+    onQuitApplication: () => {
+      quitApplication();
     }
   });
 

@@ -186,6 +186,7 @@ const windowResizeHandles = document.querySelectorAll('[data-resize-handle]');
 
 const screenshotBtn = document.getElementById('screenshot-btn');
 const analyzeBtn = document.getElementById('analyze-btn');
+const codingAiBtn = document.getElementById('coding-ai-btn');
 const screenAiBtn = document.getElementById('screen-ai-btn');
 const clearBtn = document.getElementById('clear-btn');
 const hideBtn = document.getElementById('hide-btn');
@@ -250,6 +251,7 @@ let hasAssemblyAiApiKeyConfigured = false;
 let activeAiProvider = 'gemini';
 const aiActionInFlightState = {
     askAi: false,
+    codingAi: false,
     screenAi: false,
     suggest: false,
     notes: false,
@@ -749,10 +751,11 @@ function getLatestScreenshotId() {
     return null;
 }
 
-function buildAskAiContextPayload() {
+function buildAskAiContextPayload(answerMode = 'aptitude') {
     const screenshotId = getLatestScreenshotId();
     return {
-        mode: 'best-next-answer',
+        mode: answerMode,
+        answerMode,
         contextString: '',
         transcriptContext: '',
         sessionSummary: '',
@@ -778,7 +781,7 @@ function getMissingAiKeyMessage() {
     return 'Gemini API key missing. Add it in Settings.';
 }
 
-async function askAiWithSessionContext() {
+async function askAiWithSessionContext(answerMode = 'aptitude') {
     if (!hasGeminiApiKeysConfigured) {
         showFeedback(getMissingAiKeyMessage(), 'error');
         return;
@@ -789,31 +792,38 @@ async function askAiWithSessionContext() {
         return;
     }
 
-    const payload = buildAskAiContextPayload();
+    const resolvedAnswerMode = answerMode === 'coding' ? 'coding' : 'aptitude';
+    const actionId = resolvedAnswerMode === 'coding' ? 'codingAi' : 'askAi';
+    const heading = resolvedAnswerMode === 'coding'
+        ? '**Python coding:**'
+        : '**Aptitude / CS fundamentals:**';
+    const successMessage = resolvedAnswerMode === 'coding' ? 'Code ready' : 'Ask AI ready';
+    const failureMessage = resolvedAnswerMode === 'coding' ? 'Code failed' : 'Ask AI failed';
+
+    const payload = buildAskAiContextPayload(resolvedAnswerMode);
     if (payload.enabledScreenshotIds.length === 0) {
         showFeedback('Take a screenshot of the question first', 'error');
         return;
     }
 
-    await runAiActionWithLock('askAi', async () => {
-        const stream = createStreamHandler('askAi');
+    await runAiActionWithLock(actionId, async () => {
+        const stream = createStreamHandler(actionId);
         try {
             setAnalyzing(true);
-            showLoadingOverlay('Answering latest screenshot...');
-            stream.start('**Latest screenshot:**\n\n');
+            showLoadingOverlay('Reading latest screenshot...');
+            stream.start(`${heading}\n\n`);
 
             const result = await window.electronAPI.askAiWithSessionContext(payload);
 
             if (result?.success && result?.text) {
-                const heading = '**Latest screenshot:**';
                 stream.finalize(`${heading}\n\n${result.text}`);
-                showFeedback('Ask AI ready', 'success');
+                showFeedback(successMessage, 'success');
             } else {
-                throw new Error(result?.error || 'Ask AI failed');
+                throw new Error(result?.error || failureMessage);
             }
         } catch (error) {
-            console.error('Ask AI error:', error);
-            showFeedback('Ask AI failed', 'error');
+            console.error(`${failureMessage}:`, error);
+            showFeedback(failureMessage, 'error');
             addChatMessage('system', `Error: ${error.message}`);
         } finally {
             stream.cleanup();
@@ -821,6 +831,10 @@ async function askAiWithSessionContext() {
             hideLoadingOverlay();
         }
     });
+}
+
+async function askCodingAi() {
+    return askAiWithSessionContext('coding');
 }
 
 async function analyzeScreenshotsOnly() {
@@ -840,7 +854,7 @@ async function analyzeScreenshotsOnly() {
         activeScreenAiStream = stream;
         try {
             setAnalyzing(true);
-            showLoadingOverlay('Answering latest screenshot...');
+            showLoadingOverlay('Reading latest screenshot...');
             stream.start('');
 
             await window.electronAPI.analyzeStealthWithContext({
@@ -1096,13 +1110,18 @@ function updateUI() {
     const canRunAiActions = hasGeminiApiKeysConfigured;
     const canRunTranscription = hasAssemblyAiApiKeyConfigured;
     const askAiInFlight = isAiActionInFlight('askAi');
+    const codingAiInFlight = isAiActionInFlight('codingAi');
     const screenAiInFlight = isAiActionInFlight('screenAi');
     const suggestInFlight = isAiActionInFlight('suggest');
     const notesInFlight = isAiActionInFlight('notes');
     const insightsInFlight = isAiActionInFlight('insights');
 
     if (analyzeBtn) {
-        analyzeBtn.disabled = isAnalyzing || askAiInFlight || !canRunAiActions || !hasAiContext;
+        analyzeBtn.disabled = isAnalyzing || askAiInFlight || codingAiInFlight || !canRunAiActions || !hasEnabledScreenshots;
+    }
+
+    if (codingAiBtn) {
+        codingAiBtn.disabled = isAnalyzing || askAiInFlight || codingAiInFlight || !canRunAiActions || !hasEnabledScreenshots;
     }
 
     if (screenAiBtn) {
@@ -1288,6 +1307,7 @@ function setupEventListeners() {
         windowApi: window.electronAPI,
         screenshotBtn,
         analyzeBtn,
+        codingAiBtn,
         screenAiBtn,
         clearBtn,
         hideBtn,
@@ -1316,6 +1336,7 @@ function setupEventListeners() {
         updateWindowOpacityValueLabel,
         takeStealthScreenshot,
         askAiWithSessionContext,
+        askCodingAi,
         analyzeScreenshotsOnly,
         clearStealthData,
         emergencyHide,
@@ -1358,8 +1379,10 @@ function setupIpcListeners() {
         transcriptionManager,
         toggleMasterTranscription,
         askAiWithSessionContext,
+        askCodingAi,
         analyzeScreenshotsOnly,
         isAskAiShortcutEnabled: () => Boolean(analyzeBtn && !analyzeBtn.disabled),
+        isCodingAiShortcutEnabled: () => Boolean(codingAiBtn && !codingAiBtn.disabled),
         addMonitorLog,
         getActiveScreenAiStream: () => activeScreenAiStream,
         clearActiveScreenAiStream: () => {

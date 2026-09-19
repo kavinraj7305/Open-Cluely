@@ -8,6 +8,13 @@ function buildContextBlock(label, content) {
   return normalizedContent ? `${label}:\n${normalizedContent}\n\n` : '';
 }
 
+function buildScreenOcrBlock(ocrText) {
+  return buildContextBlock(
+    'SCREEN OCR (latest screenshot only; this is a new question, not a continuation)',
+    ocrText
+  );
+}
+
 function getCodeFenceLanguage(programmingLanguage) {
   const resolvedLanguage = resolveProgrammingLanguage(programmingLanguage);
 
@@ -23,6 +30,76 @@ function getCodeFenceLanguage(programmingLanguage) {
     default:
       return resolvedLanguage.toLowerCase();
   }
+}
+
+function resolveAnswerMode(answerMode) {
+  const normalized = String(answerMode || '').trim().toLowerCase();
+
+  if (normalized === 'coding' || normalized === 'code' || normalized === 'python') {
+    return 'coding';
+  }
+
+  if (
+    normalized === 'aptitude' ||
+    normalized === 'cs' ||
+    normalized === 'fundamentals' ||
+    normalized === 'mcq'
+  ) {
+    return 'aptitude';
+  }
+
+  return 'auto';
+}
+
+function buildForcedAnswerModeDirective(answerMode, programmingLanguage) {
+  const resolvedMode = resolveAnswerMode(answerMode);
+
+  if (resolvedMode === 'aptitude') {
+    return `
+=== FORCED MODE: APTITUDE / CS FUNDAMENTALS ===
+The user pressed the aptitude shortcut after capturing the screen. Do NOT write a program.
+Ignore the default programming language. Ignore sidebar links such as "Python Programming".
+
+Treat the screen as one of:
+- quantitative aptitude, verbal/logical reasoning, bank/placement MCQs, A/B/C/D options
+- CS fundamentals: OS, DBMS, CN, DSA theory, COA, compiler, OOP, software engineering,
+  GATE / UGC-NET / campus-placement style questions
+
+=== FORMAT ===
+**Answer:** X) option text
+If there are no options, give the direct fact or result first.
+**Why:** short working. For numerical aptitude: formula + units + arithmetic.
+For CS fundamentals: the precise reason or definition in 2–5 lines, then a one-line memory hook.
+No code. No complexity analysis. No "in Python you would...".
+If several complete questions are visible, answer the topmost complete one first.
+`.trim();
+  }
+
+  if (resolvedMode === 'coding') {
+    const resolvedLanguage = 'Python';
+    const codeFenceLanguage = getCodeFenceLanguage(resolvedLanguage);
+
+    return `
+=== FORCED MODE: PYTHON CODING ===
+The user pressed the coding shortcut after capturing the screen.
+Answer as a coding problem in ${resolvedLanguage} unless the screenshot's editor/signature
+clearly requires another language.
+
+=== FORMAT ===
+Start with the code, no introduction.
+\`\`\`${codeFenceLanguage}
+# Every line of code MUST have a comment on the line above it.
+# No line without a comment.
+<complete runnable ${resolvedLanguage} solution>
+\`\`\`
+**Approach:** 1–3 sentences.
+**Complexity:** Time O(?) | Space O(?).
+**Edge cases / gotchas:** bullet list, only if non-trivial.
+${buildLanguageBestPractices(resolvedLanguage)}
+`.trim();
+  }
+
+  return '';
 }
 
 function buildProgrammingLanguagePreference(programmingLanguage) {
@@ -168,26 +245,41 @@ function buildAskAiSessionPrompt({
   transcriptContext = '',
   sessionSummary = '',
   screenshotCount = 0,
-  programmingLanguage
+  programmingLanguage,
+  answerMode,
+  mode,
+  ocrText = ''
 } = {}) {
-  const resolvedLanguage = resolveProgrammingLanguage(programmingLanguage);
+  const resolvedAnswerMode = resolveAnswerMode(answerMode || mode);
+  const resolvedLanguage = resolvedAnswerMode === 'coding'
+    ? 'Python'
+    : resolveProgrammingLanguage(programmingLanguage);
+  const forcedModeDirective = buildForcedAnswerModeDirective(resolvedAnswerMode, resolvedLanguage);
+  const languageBlock = resolvedAnswerMode === 'aptitude'
+    ? '=== LANGUAGE FOR CODE ===\nDo not write code. This is an aptitude / CS fundamentals question.'
+    : resolvedAnswerMode === 'coding'
+      ? `=== LANGUAGE FOR CODE ===\nWrite ${resolvedLanguage}. ${buildLanguageBestPractices(resolvedLanguage)}`
+      : `=== LANGUAGE FOR CODE ===
+If — and only if — the domain is coding, prefer ${resolvedLanguage} unless the question or the
+screen clearly demands another language. ${buildLanguageBestPractices(resolvedLanguage)}`;
+  const languagePreferenceBlock = resolvedAnswerMode === 'aptitude'
+    ? ''
+    : `${buildProgrammingLanguagePreference(resolvedLanguage)}\n`;
+  const hasOcr = String(ocrText || '').trim().length > 0;
 
   return `
 ${buildCoreDirective()}
 
-${buildProgrammingLanguagePreference(resolvedLanguage)}
-
+${forcedModeDirective ? `${forcedModeDirective}\n` : ''}${languagePreferenceBlock}
 === LIVE INPUTS ===
-- Transcript: live STT capture — may contain recognition errors. Synthesize ALL of it as one thread.
-- Screenshots attached: ${screenshotCount} (treat as ground truth when present).
-- Conversation history: ${contextString ? 'yes' : 'none'}.
-${sessionSummary ? '- Session summary: available.' : ''}
+- This is a NEW question from the latest screenshot only.
+- Do not continue, refer to, or reuse any previous screenshot or answer.
+- No conversation history, transcript, or older screenshots are included.
+- Screenshot input is OCR text only (${hasOcr ? 'present' : 'missing'}; count: ${screenshotCount || (hasOcr ? 1 : 0)}).
 
-=== LANGUAGE FOR CODE ===
-If — and only if — the domain is coding, prefer ${resolvedLanguage} unless the question or the
-screen clearly demands another language. ${buildLanguageBestPractices(resolvedLanguage)}
+${languageBlock}
 
-${buildContextBlock('Conversation history', contextString)}${buildContextBlock('Session summary', sessionSummary)}${buildContextBlock('Transcript', transcriptContext)}`.trim();
+${buildScreenOcrBlock(ocrText)}`.trim();
 }
 
 // ─── SCREEN AI ────────────────────────────────────────────────────────────────
@@ -196,12 +288,10 @@ function buildScreenshotAnalysisPrompt({
   contextString = '',
   additionalContext = '',
   programmingLanguage,
-  screenshotCount = 1
+  screenshotCount = 1,
+  ocrText = ''
 } = {}) {
   const resolvedLanguage = resolveProgrammingLanguage(programmingLanguage);
-  const screenshotDirective = screenshotCount > 1
-    ? `You have ${screenshotCount} screenshots — synthesize them as one set before answering.`
-    : 'Read the screen completely before answering.';
 
   return `
 ${buildCoreDirective()}
@@ -209,7 +299,8 @@ ${buildCoreDirective()}
 ${buildProgrammingLanguagePreference(resolvedLanguage)}
 
 === SCREEN INPUT ===
-${screenshotDirective}
+This is a NEW question from the latest screenshot only. Do not continue any previous screenshot.
+The screen contents are provided as OCR text only. No image and no older screenshots are included.
 
 - Identify content type: aptitude/MCQ, coding problem, error/stack trace, terminal, code editor,
   UI, diagram, documentation, slide, chat thread, or other.
@@ -221,7 +312,7 @@ ${screenshotDirective}
 If — and only if — the domain is coding, prefer ${resolvedLanguage} unless the screen clearly
 demands another language. ${buildLanguageBestPractices(resolvedLanguage)}
 
-${buildContextBlock('Conversation history', contextString)}${buildContextBlock('Additional context', additionalContext)}`.trim();
+${buildScreenOcrBlock(ocrText)}`.trim();
 }
 
 // ─── SUGGEST ──────────────────────────────────────────────────────────────────

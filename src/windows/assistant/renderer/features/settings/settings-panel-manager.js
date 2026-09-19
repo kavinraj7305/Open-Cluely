@@ -255,6 +255,33 @@ export function createSettingsPanelManager({
             : configuredModels[0];
     }
 
+    function populateBedrockModelOptions(models, selectedModel) {
+        if (!settingBedrockModel) {
+            return;
+        }
+
+        settingBedrockModel.innerHTML = '';
+
+        const configuredModels = Array.isArray(models) ? models.filter(Boolean) : [];
+        if (selectedModel && !configuredModels.includes(selectedModel)) {
+            configuredModels.unshift(selectedModel);
+        }
+        if (configuredModels.length === 0) {
+            throw new Error('Bedrock models are not configured.');
+        }
+
+        configuredModels.forEach((modelName) => {
+            const option = document.createElement('option');
+            option.value = modelName;
+            option.textContent = modelName;
+            settingBedrockModel.appendChild(option);
+        });
+
+        settingBedrockModel.value = configuredModels.includes(selectedModel)
+            ? selectedModel
+            : configuredModels[0];
+    }
+
     function populateProgrammingLanguageOptions(languages, selectedLanguage) {
         if (!settingProgrammingLanguage) {
             return;
@@ -331,9 +358,10 @@ export function createSettingsPanelManager({
                 populateGroqModelOptions(settings.groqModels, settings.groqModel || settings.defaultGroqModel);
 
                 if (settingBedrockKey) settingBedrockKey.value = settings.bedrockApiKey || '';
-                if (settingBedrockModel) {
-                    settingBedrockModel.value = settings.bedrockModel || settings.defaultBedrockModel || 'qwen.qwen3-coder-30b-a3b-v1:0';
-                }
+                populateBedrockModelOptions(
+                    settings.bedrockModels,
+                    settings.bedrockModel || settings.defaultBedrockModel
+                );
                 if (settingBedrockRegion) {
                     settingBedrockRegion.value = settings.bedrockRegion || settings.defaultBedrockRegion || 'ap-south-1';
                 }

@@ -378,23 +378,16 @@ class GrokService {
   }
 
   async analyzeScreenshots(imageParts, additionalContext = '', options = {}) {
-    const contextString = typeof options.contextStringOverride === 'string'
-      ? options.contextStringOverride
-      : this.getContextString();
     const prompt = buildScreenshotAnalysisPrompt({
-      contextString,
-      additionalContext,
-      programmingLanguage: this.programmingLanguage
+      contextString: '',
+      additionalContext: '',
+      programmingLanguage: this.programmingLanguage,
+      screenshotCount: 1,
+      ocrText: options.ocrText || ''
     });
 
     const streamOptions = { onChunk: options.onChunk };
-    const result = await this.generateMultimodal([
-      { text: prompt },
-      ...imageParts
-    ], streamOptions);
-
-    this.addToHistory('assistant', `Screenshot analysis: ${result}`);
-    return result;
+    return this.generateText(prompt, streamOptions);
   }
 
   async analyzeScreenshot(imageBase64, additionalContext = '') {
@@ -405,43 +398,22 @@ class GrokService {
   }
 
   async askAiWithSessionContext(options = {}) {
-    const contextString = typeof options.contextString === 'string'
-      ? options.contextString
-      : this.getContextString();
     const prompt = buildAskAiSessionPrompt({
-      contextString,
-      transcriptContext: options.transcriptContext || '',
-      sessionSummary: options.sessionSummary || '',
-      screenshotCount: options.screenshotCount || 0,
-      mode: options.mode || 'best-next-answer'
+      contextString: '',
+      transcriptContext: '',
+      sessionSummary: '',
+      screenshotCount: options.screenshotCount || (options.ocrText ? 1 : 0),
+      programmingLanguage: this.programmingLanguage,
+      answerMode: options.answerMode || options.mode,
+      ocrText: options.ocrText || ''
     });
 
     const streamOptions = { onChunk: options.onChunk };
-    const result = await this.generateText(prompt, streamOptions);
-    this.addToHistory('assistant', `Ask AI: ${result}`);
-    return result;
+    return this.generateText(prompt, streamOptions);
   }
 
-  async askAiWithSessionContextAndScreenshots(imageParts, options = {}) {
-    const contextString = typeof options.contextString === 'string'
-      ? options.contextString
-      : this.getContextString();
-    const prompt = buildAskAiSessionPrompt({
-      contextString,
-      transcriptContext: options.transcriptContext || '',
-      sessionSummary: options.sessionSummary || '',
-      screenshotCount: options.screenshotCount || imageParts.length,
-      mode: options.mode || 'best-next-answer'
-    });
-
-    const streamOptions = { onChunk: options.onChunk };
-    const result = await this.generateMultimodal([
-      { text: prompt },
-      ...imageParts
-    ], streamOptions);
-
-    this.addToHistory('assistant', `Ask AI: ${result}`);
-    return result;
+  async askAiWithSessionContextAndScreenshots(_imageParts, options = {}) {
+    return this.askAiWithSessionContext(options);
   }
 
   async suggestResponse(context, options = {}) {
