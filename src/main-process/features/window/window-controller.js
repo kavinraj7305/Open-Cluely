@@ -8,7 +8,12 @@
   DEFAULT_WINDOW_OPACITY_LEVEL,
   STEALTH_WINDOW_OPACITY
 } = require('./window-constants');
-const { getKeyboardShortcutAccelerator } = require('../../../config');
+const { getKeyboardShortcutAccelerator, shortcutAcceleratorUsesZeroPrefix } = require('../../../config');
+const {
+  attachWindowChordInput,
+  registerZeroPrefixGlobalShortcuts,
+  unregisterZeroPrefixGlobalShortcuts
+} = require('./zero-prefix-global-shortcuts');
 
 function createWindowController({
   app,
@@ -24,6 +29,7 @@ function createWindowController({
   let mainWindow = null;
   let isVisible = true;
   let autoHideTimer = null;
+  let isEmergencyHidden = false;
   let isRecoveryReloadInProgress = false;
   let lastRecoveryReloadAt = 0;
   let activeWindowOpacityLevel = DEFAULT_WINDOW_OPACITY_LEVEL;
@@ -256,6 +262,11 @@ function createWindowController({
       return;
     }
 
+    if (isEmergencyHidden) {
+      revealAfterEmergencyHide();
+      return;
+    }
+
     const stealthModeEnabled = isVisible;
     isVisible = !stealthModeEnabled;
     if (isVisible && !mainWindow.isVisible()) {
@@ -265,7 +276,27 @@ function createWindowController({
     sendToRenderer('set-stealth-mode', stealthModeEnabled);
   }
 
-  function emergencyHide() {
+  function revealAfterEmergencyHide() {
+    if (autoHideTimer) {
+      clearTimeout(autoHideTimer);
+      autoHideTimer = null;
+    }
+
+    isEmergencyHidden = false;
+    isVisible = true;
+
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+
+    mainWindow.setIgnoreMouseEvents(false);
+    if (!mainWindow.isVisible()) {
+      mainWindow.showInactive();
+    }
+    applyWindowOpacity();
+  }
+
+  function emergencyHide({ silent = false } = {}) {
     if (autoHideTimer) {
       clearTimeout(autoHideTimer);
       autoHideTimer = null;
@@ -275,17 +306,18 @@ function createWindowController({
       return;
     }
 
-    mainWindow.setOpacity(0.01);
-    sendToRenderer('emergency-clear');
+    if (isEmergencyHidden) {
+      revealAfterEmergencyHide();
+      return;
+    }
 
-    autoHideTimer = setTimeout(() => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        isVisible = true;
-        applyWindowOpacity();
-        sendToRenderer('set-stealth-mode', false);
-      }
-      autoHideTimer = null;
-    }, 2000);
+    isEmergencyHidden = true;
+    isVisible = false;
+    mainWindow.setOpacity(0.01);
+    mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    if (!silent) {
+      sendToRenderer('emergency-clear');
+    }
   }
 
   function moveToPosition(position) {
@@ -368,6 +400,10 @@ function createWindowController({
 
   function registerShortcuts() {
     const registerShortcut = (shortcutId, handler) => {
+      if (shortcutAcceleratorUsesZeroPrefix(shortcutId)) {
+        return;
+      }
+
       const accelerator = getKeyboardShortcutAccelerator(shortcutId);
       const isRegistered = globalShortcut.register(accelerator, handler);
       if (!isRegistered) {
@@ -466,9 +502,46 @@ function createWindowController({
     registerShortcut('windowSizePreset4', () => {
       setWindowSizePreset(4);
     });
+
+    const chordHandlers = {
+      takeScreenshot: async () => {
+        if (typeof onTakeStealthScreenshot === 'function') {
+          await onTakeStealthScreenshot();
+        }
+      },
+      askAi: () => {
+        sendToRenderer('trigger-ask-ai');
+      },
+      codingAi: () => {
+        sendToRenderer('trigger-coding-ai');
+      },
+      emergencyHide: () => {
+        emergencyHide({ silent: true });
+      },
+      moveWindowLeft: () => {
+        moveToPosition('left');
+      },
+      moveWindowRight: () => {
+        moveToPosition('right');
+      },
+      moveWindowUp: () => {
+        moveToPosition('top');
+      },
+      moveWindowDown: () => {
+        moveToPosition('bottom');
+      }
+    };
+
+    registerZeroPrefixGlobalShortcuts({
+      handlers: chordHandlers
+    });
+
+    const contents = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null;
+    attachWindowChordInput(contents, chordHandlers);
   }
 
   function unregisterShortcuts() {
+    unregisterZeroPrefixGlobalShortcuts();
     globalShortcut.unregisterAll();
   }
 

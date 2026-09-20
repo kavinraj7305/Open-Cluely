@@ -28,6 +28,7 @@ export function setupEventListeners({
     selectedSources,
     isCloseConfirmationOpen,
     isShortcutPressed,
+    shortcutUsesZeroPrefixBinding,
     updateWindowOpacityValueLabel,
     takeStealthScreenshot,
     askAiWithSessionContext,
@@ -186,13 +187,21 @@ export function setupEventListeners({
 
         if (isShortcutPressed?.(event, 'askAi')) {
             event.preventDefault();
-            addMonitorLog('info', 'shortcut-local', 'Local Ask AI shortcut captured; awaiting global Ask AI event');
+            addMonitorLog('info', 'shortcut-local', 'Local Ask AI shortcut triggered');
+            askAiWithSessionContext?.('aptitude').catch((error) => {
+                console.error('Local Ask AI shortcut failed:', error);
+                addMonitorLog('error', 'shortcut-ask-ai-failed', error.message);
+            });
             return;
         }
 
         if (isShortcutPressed?.(event, 'codingAi')) {
             event.preventDefault();
-            addMonitorLog('info', 'shortcut-local', 'Local Code shortcut captured; awaiting global Code event');
+            addMonitorLog('info', 'shortcut-local', 'Local Code shortcut triggered');
+            askCodingAi?.().catch((error) => {
+                console.error('Local Code shortcut failed:', error);
+                addMonitorLog('error', 'shortcut-coding-ai-failed', error.message);
+            });
             return;
         }
 

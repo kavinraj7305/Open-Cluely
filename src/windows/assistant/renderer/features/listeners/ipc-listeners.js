@@ -111,11 +111,6 @@ export function setupIpcListeners({
 
     if (windowApi.onTriggerAskAi) {
         windowApi.onTriggerAskAi(() => {
-            if (typeof isAskAiShortcutEnabled === 'function' && !isAskAiShortcutEnabled()) {
-                addMonitorLog('info', 'shortcut-ask-ai-blocked', 'Global Ask AI shortcut ignored because Ask AI is disabled');
-                return;
-            }
-
             addMonitorLog('info', 'shortcut-event', 'Global Ask AI shortcut triggered');
             askAiWithSessionContext?.('aptitude').catch((error) => {
                 console.error('Global Ask AI trigger failed:', error);
@@ -126,11 +121,6 @@ export function setupIpcListeners({
 
     if (windowApi.onTriggerCodingAi) {
         windowApi.onTriggerCodingAi(() => {
-            if (typeof isCodingAiShortcutEnabled === 'function' && !isCodingAiShortcutEnabled()) {
-                addMonitorLog('info', 'shortcut-coding-ai-blocked', 'Global Code shortcut ignored because Code is disabled');
-                return;
-            }
-
             addMonitorLog('info', 'shortcut-event', 'Global Code shortcut triggered');
             askCodingAi?.().catch((error) => {
                 console.error('Global Code trigger failed:', error);

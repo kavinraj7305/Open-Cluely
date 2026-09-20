@@ -257,6 +257,7 @@ const aiActionInFlightState = {
     notes: false,
     insights: false
 };
+let lastScreenshotAnswerAt = 0;
 const shortcutManager = createShortcutManager({ settingsShortcutsList });
 const windowAdjustmentManager = createWindowAdjustmentManager({
     windowResizeHandles,
@@ -317,9 +318,8 @@ const settingsPanelManager = createSettingsPanelManager({
     settingWindowOpacityValue,
     applySettingsShortcutConfig: (settings) => applySettingsShortcutConfig(settings),
     showFeedback: (message, type) => showFeedback(message, type),
-    onSettingsSaved: (settings) => {
-        applyApiKeyAvailabilityFromSettings(settings);
-        updateUI();
+    onSettingsSaved: async () => {
+        await refreshAiSettingsFromMain();
     }
 });
 const transcriptionManager = createTranscriptionManager({
@@ -508,6 +508,10 @@ function isShortcutPressed(event, shortcutId) {
     return shortcutManager.isShortcutPressed(event, shortcutId);
 }
 
+function shortcutUsesZeroPrefixBinding(shortcutId) {
+    return shortcutManager.shortcutUsesZeroPrefixBinding(shortcutId);
+}
+
 function isAiActionInFlight(actionId) {
     return Boolean(aiActionInFlightState[actionId]);
 }
@@ -595,18 +599,45 @@ function hasConfiguredAssemblyAiApiKey(value) {
     return String(value ?? '').trim().length > 0;
 }
 
+function inferActiveAiProviderFromSettings(settings) {
+    if (!settings || typeof settings !== 'object') {
+        return 'bedrock';
+    }
+
+    const providerFromMain = String(settings.aiProvider || '').trim().toLowerCase();
+    if (['gemini', 'grok', 'groq', 'bedrock', 'ollama'].includes(providerFromMain)) {
+        return providerFromMain;
+    }
+
+    if (hasConfiguredGeminiApiKeys(settings.bedrockApiKey)) {
+        return 'bedrock';
+    }
+    if (hasConfiguredGeminiApiKeys(settings.groqApiKey)) {
+        return 'groq';
+    }
+    if (hasConfiguredGeminiApiKeys(settings.grokApiKey)) {
+        return 'grok';
+    }
+    if (hasConfiguredGeminiApiKeys(settings.geminiApiKey)) {
+        return 'gemini';
+    }
+
+    return 'bedrock';
+}
+
 function applyApiKeyAvailabilityFromSettings(settings) {
     if (!settings || typeof settings !== 'object') {
         hasGeminiApiKeysConfigured = false;
         hasAssemblyAiApiKeyConfigured = false;
-        activeAiProvider = 'gemini';
+        activeAiProvider = 'bedrock';
         return;
     }
 
-    activeAiProvider = settings.aiProvider || 'gemini';
+    activeAiProvider = inferActiveAiProviderFromSettings(settings);
 
-    // Ollama doesn't require API keys, so treat it as always configured
-    if (activeAiProvider === 'ollama') {
+    if (typeof settings.isAiConfigured === 'boolean') {
+        hasGeminiApiKeysConfigured = settings.isAiConfigured;
+    } else if (activeAiProvider === 'ollama') {
         hasGeminiApiKeysConfigured = true;
     } else if (activeAiProvider === 'groq') {
         if (typeof settings.hasGroqApiKeys === 'boolean') {
@@ -751,16 +782,29 @@ function getLatestScreenshotId() {
     return null;
 }
 
-function buildAskAiContextPayload(answerMode = 'aptitude') {
+async function buildAskAiContextPayload(answerMode = 'aptitude') {
     const screenshotId = getLatestScreenshotId();
+    let screenshotCount = screenshotId ? 1 : screenshotsCount;
+
+    if (!screenshotId && window.electronAPI?.getScreenshotsCount) {
+        try {
+            const countFromMain = await window.electronAPI.getScreenshotsCount();
+            if (Number.isFinite(countFromMain) && countFromMain > 0) {
+                screenshotCount = countFromMain;
+            }
+        } catch (error) {
+            console.error('Failed to read screenshot count from main process:', error);
+        }
+    }
+
     return {
         mode: answerMode,
         answerMode,
         contextString: '',
         transcriptContext: '',
         sessionSummary: '',
-        enabledScreenshotIds: screenshotId ? [screenshotId] : [],
-        screenshotCount: screenshotId ? 1 : 0,
+        enabledScreenshotIds: screenshotId ? [screenshotId] : null,
+        screenshotCount,
         latestScreenshotOnly: true
     };
 }
@@ -781,7 +825,25 @@ function getMissingAiKeyMessage() {
     return 'Gemini API key missing. Add it in Settings.';
 }
 
+async function refreshAiSettingsFromMain() {
+    if (!window.electronAPI?.getSettings) {
+        return;
+    }
+
+    try {
+        const settings = await window.electronAPI.getSettings();
+        if (settings && !settings.error) {
+            applyApiKeyAvailabilityFromSettings(settings);
+            updateUI();
+        }
+    } catch (error) {
+        console.error('Failed to refresh AI settings:', error);
+    }
+}
+
 async function askAiWithSessionContext(answerMode = 'aptitude') {
+    await refreshAiSettingsFromMain();
+
     if (!hasGeminiApiKeysConfigured) {
         showFeedback(getMissingAiKeyMessage(), 'error');
         return;
@@ -794,14 +856,19 @@ async function askAiWithSessionContext(answerMode = 'aptitude') {
 
     const resolvedAnswerMode = answerMode === 'coding' ? 'coding' : 'aptitude';
     const actionId = resolvedAnswerMode === 'coding' ? 'codingAi' : 'askAi';
+    const now = Date.now();
+    if (isAiActionInFlight(actionId) || now - lastScreenshotAnswerAt < 700) {
+        return;
+    }
+    lastScreenshotAnswerAt = now;
     const heading = resolvedAnswerMode === 'coding'
-        ? '**Python coding:**'
+        ? ''
         : '**Aptitude / CS fundamentals:**';
     const successMessage = resolvedAnswerMode === 'coding' ? 'Code ready' : 'Ask AI ready';
     const failureMessage = resolvedAnswerMode === 'coding' ? 'Code failed' : 'Ask AI failed';
 
-    const payload = buildAskAiContextPayload(resolvedAnswerMode);
-    if (payload.enabledScreenshotIds.length === 0) {
+    const payload = await buildAskAiContextPayload(resolvedAnswerMode);
+    if (!payload.enabledScreenshotIds && payload.screenshotCount <= 0) {
         showFeedback('Take a screenshot of the question first', 'error');
         return;
     }
@@ -811,12 +878,13 @@ async function askAiWithSessionContext(answerMode = 'aptitude') {
         try {
             setAnalyzing(true);
             showLoadingOverlay('Reading latest screenshot...');
-            stream.start(`${heading}\n\n`);
+            stream.start(resolvedAnswerMode === 'coding' ? '' : `${heading}\n\n`);
 
             const result = await window.electronAPI.askAiWithSessionContext(payload);
 
             if (result?.success && result?.text) {
-                stream.finalize(`${heading}\n\n${result.text}`);
+                const responseText = result.text;
+                stream.finalize(resolvedAnswerMode === 'coding' ? responseText : `${heading}\n\n${responseText}`);
                 showFeedback(successMessage, 'success');
             } else {
                 throw new Error(result?.error || failureMessage);
@@ -843,8 +911,8 @@ async function analyzeScreenshotsOnly() {
         return;
     }
 
-    const payload = buildAskAiContextPayload();
-    if (payload.enabledScreenshotIds.length === 0) {
+    const payload = await buildAskAiContextPayload();
+    if (!payload.enabledScreenshotIds && payload.screenshotCount <= 0) {
         showFeedback('Take a screenshot of the question first', 'error');
         return;
     }
@@ -896,8 +964,7 @@ async function clearStealthData() {
 
 async function emergencyHide() {
     try {
-        await window.electronAPI.emergencyHide();
-        showEmergencyOverlay();
+        await window.electronAPI.emergencyHide({ silent: true });
     } catch (error) {
         console.error('Emergency hide error:', error);
     }
@@ -1083,9 +1150,8 @@ function closeSettings() {
 
 async function saveSettings() {
     const result = await settingsPanelManager.saveSettings();
-    if (result?.success && result?.settings) {
-        applyApiKeyAvailabilityFromSettings(result.settings);
-        updateUI();
+    if (result?.success) {
+        await refreshAiSettingsFromMain();
     }
 }
 
@@ -1333,6 +1399,7 @@ function setupEventListeners() {
         selectedSources,
         isCloseConfirmationOpen: () => isCloseConfirmationOpen,
         isShortcutPressed,
+        shortcutUsesZeroPrefixBinding,
         updateWindowOpacityValueLabel,
         takeStealthScreenshot,
         askAiWithSessionContext,

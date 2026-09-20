@@ -15,6 +15,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^16.3.1",
+    "node-global-key-listener": "^0.3.0",
     "screenshot-desktop": "^1.15.0",
     "ws": "^8.19.0"
   },

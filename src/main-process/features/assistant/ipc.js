@@ -1,4 +1,5 @@
 ﻿const path = require('path');
+const { extractCodingOnlyFromResponse } = require('../../../services/ai/prompts');
 
 function registerAssistantIpc({
   ipcMain,
@@ -319,8 +320,9 @@ function registerAssistantIpc({
     return windowController.toggleStealthMode();
   });
 
-  ipcMain.handle('emergency-hide', () => {
-    return windowController.emergencyHide();
+  ipcMain.handle('emergency-hide', (_event, payload = {}) => {
+    const silent = payload?.silent === true;
+    return windowController.emergencyHide({ silent });
   });
 
   ipcMain.handle('take-stealth-screenshot', async () => {
@@ -384,23 +386,43 @@ function registerAssistantIpc({
         throw new Error('Could not read the latest screenshot. Capture the question again.');
       }
 
-      if (!ocrText) {
-        throw new Error('Could not read text from the latest screenshot. Capture the question again.');
-      }
-
       const usedScreenshots = true;
       const usedScreenshotCount = 1;
-      const text = await geminiRuntime.executeWithKeyFailover((geminiService) => {
+      const text = await geminiRuntime.executeWithKeyFailover(async (geminiService) => {
         if (!geminiService) {
           throw new Error('AI model not initialized. Please check your API key.');
         }
 
-        return geminiService.askAiWithSessionContext({
+        if (ocrText) {
+          return geminiService.askAiWithSessionContext({
+            contextString: '',
+            transcriptContext: '',
+            sessionSummary: '',
+            screenshotCount: 1,
+            ocrText,
+            mode: answerMode,
+            answerMode,
+            onChunk,
+            requestId
+          });
+        }
+
+        const { imageParts } = await screenshotManager.buildImagePartsFromScreenshots({
+          strict: false,
+          includeIds: enabledScreenshotIds,
+          latestOnly: true
+        });
+
+        if (!imageParts.length) {
+          throw new Error('Could not read text from the latest screenshot. Capture the question again.');
+        }
+
+        return geminiService.askAiWithSessionContextAndScreenshots(imageParts, {
           contextString: '',
           transcriptContext: '',
           sessionSummary: '',
           screenshotCount: 1,
-          ocrText,
+          ocrText: '',
           mode: answerMode,
           answerMode,
           onChunk,
@@ -412,6 +434,10 @@ function registerAssistantIpc({
         throw new Error('Could not read the latest screenshot. Capture the question again.');
       }
 
+      const responseText = answerMode === 'coding'
+        ? extractCodingOnlyFromResponse(text)
+        : text;
+
       logAiRequest({
         requestId,
         action: streamActionId,
@@ -421,7 +447,7 @@ function registerAssistantIpc({
         screenshotCount: usedScreenshotCount,
         screenshotIds,
         screenshotFiles,
-        needsOcr: true,
+        needsOcr: Boolean(ocrText),
         ocrChars: ocrText.length,
         ocrFiles: ocrFiles.map((file) => ({
           id: file.id,
@@ -437,12 +463,12 @@ function registerAssistantIpc({
         transcriptContext: '',
         sessionSummary: '',
         chatContextCount: 0,
-        responseChars: String(text || '').length,
-        responseText: clip(text)
+        responseChars: String(responseText || '').length,
+        responseText: clip(responseText)
       });
 
       sendToRenderer('ai-stream-end', { actionId: streamActionId });
-      return { success: true, text, mode: answerMode, usedScreenshots };
+      return { success: true, text: responseText, mode: answerMode, usedScreenshots };
     } catch (error) {
       console.error('Error in ask-ai-with-session-context:', error);
       logAiRequest({

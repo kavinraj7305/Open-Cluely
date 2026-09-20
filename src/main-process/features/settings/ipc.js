@@ -27,6 +27,7 @@ function registerSettingsIpc({
 
     return {
       aiProvider: geminiRuntime.getActiveAiProvider(),
+      isAiConfigured: geminiRuntime.isAiConfigured(),
       geminiApiKey,
       grokApiKey,
       groqApiKey,

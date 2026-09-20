@@ -17,7 +17,8 @@ const {
   getAssemblyAiSpeechModels,
   getDefaultAssemblyAiSpeechModel,
   getKeyboardShortcuts,
-  resolveAssemblyAiSpeechModel
+  resolveAssemblyAiSpeechModel,
+  inferAiProviderFromKeys
 } = require('../config');
 const {
   getAppStatePath,
@@ -126,7 +127,6 @@ async function startApplication() {
   function loadPersistedAppState() {
     appState = loadAppState(app);
 
-    const activeAiProvider = geminiRuntime.setActiveAiProvider(appState.aiProvider);
     const keyState = geminiRuntime.setKeys(
       normalizeGeminiApiKeys(appState?.geminiApiKey),
       appState.geminiApiKeyIndex
@@ -143,6 +143,14 @@ async function startApplication() {
       normalizeGeminiApiKeys(appState?.bedrockApiKey),
       appState.bedrockApiKeyIndex
     );
+    const inferredAiProvider = inferAiProviderFromKeys({
+      aiProvider: appState.aiProvider,
+      bedrockApiKey: appState.bedrockApiKey,
+      groqApiKey: appState.groqApiKey,
+      grokApiKey: appState.grokApiKey,
+      geminiApiKey: appState.geminiApiKey
+    });
+    const activeAiProvider = geminiRuntime.setActiveAiProvider(inferredAiProvider);
     const activeGeminiModel = geminiRuntime.setActiveGeminiModel(appState.geminiModel);
     const activeGrokModel = geminiRuntime.setActiveGrokModel(appState.grokModel);
     const activeGroqModel = geminiRuntime.setActiveGroqModel(appState.groqModel);

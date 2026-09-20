@@ -348,8 +348,22 @@ class GeminiService {
     return this.generateText(prompt, streamOptions);
   }
 
-  async askAiWithSessionContextAndScreenshots(_imageParts, options = {}) {
-    return this.askAiWithSessionContext(options);
+  async askAiWithSessionContextAndScreenshots(imageParts, options = {}) {
+    const prompt = buildAskAiSessionPrompt({
+      contextString: '',
+      transcriptContext: '',
+      sessionSummary: '',
+      screenshotCount: 1,
+      programmingLanguage: this.programmingLanguage,
+      answerMode: options.answerMode || options.mode,
+      ocrText: options.ocrText || ''
+    });
+    const parts = Array.isArray(imageParts) ? imageParts.slice(-1) : [];
+    const streamOptions = { onChunk: options.onChunk };
+    if (parts.length === 0) {
+      return this.generateText(prompt, streamOptions);
+    }
+    return this.generateMultimodal([{ text: prompt }, ...parts], streamOptions);
   }
 
   async suggestResponse(context, options = {}) {

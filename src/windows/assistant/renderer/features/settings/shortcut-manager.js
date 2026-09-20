@@ -1,3 +1,25 @@
+const ZERO_CHORD_ARM_MS = 2000;
+let zeroChordArmedUntil = 0;
+
+function armZeroChord() {
+    zeroChordArmedUntil = Date.now() + ZERO_CHORD_ARM_MS;
+}
+
+function consumeZeroChordArm() {
+    if (Date.now() >= zeroChordArmedUntil) {
+        return false;
+    }
+
+    zeroChordArmedUntil = 0;
+    return true;
+}
+
+function isBacktickKeyEvent(event) {
+    const key = String(event?.key || '').trim();
+    const code = String(event?.code || '').trim();
+    return key === '`' || key === '~' || code === 'Backquote';
+}
+
 function normalizeShortcutToken(token) {
     const normalized = String(token || '').trim().toLowerCase();
     const aliasMap = {
@@ -40,6 +62,7 @@ function parseAcceleratorBinding(accelerator) {
         ctrlOrMeta: false,
         alt: false,
         shift: false,
+        zeroPrefix: false,
         key: ''
     };
 
@@ -63,10 +86,16 @@ function parseAcceleratorBinding(accelerator) {
             case 'option':
                 binding.alt = true;
                 break;
-            case 'shift':
-                binding.shift = true;
-                break;
-            default:
+        case 'shift':
+            binding.shift = true;
+            break;
+        case '0':
+        case '`':
+        case 'backtick':
+        case 'grave':
+            binding.zeroPrefix = true;
+            break;
+        default:
                 binding.key = normalizeShortcutToken(normalized);
                 break;
         }
@@ -114,6 +143,9 @@ function formatShortcutTokenForDisplay(token) {
         alt: navigator.platform.toLowerCase().includes('mac') ? 'Option' : 'Alt',
         option: 'Option',
         shift: 'Shift',
+        '`': '`',
+        backtick: '`',
+        grave: '`',
         left: 'Left',
         right: 'Right',
         up: 'Up',
@@ -250,14 +282,34 @@ export function createShortcutManager({ settingsShortcutsList }) {
         return shortcutBindingsById.get(shortcutId) || null;
     }
 
+    function shortcutUsesZeroPrefixBinding(shortcutId) {
+        const binding = getShortcutBinding(shortcutId);
+        return Boolean(binding?.zeroPrefix);
+    }
+
     function isShortcutPressed(event, shortcutId) {
         const binding = getShortcutBinding(shortcutId);
         if (!binding) {
             return false;
         }
 
+        if (binding.zeroPrefix && isBacktickKeyEvent(event)) {
+            armZeroChord();
+            return false;
+        }
+
         const eventKey = normalizeShortcutToken(event.key);
-        if (eventKey !== binding.key) {
+        const eventCode = String(event.code || '');
+        const codeKey = eventCode.startsWith('Key')
+            ? eventCode.slice(3).toLowerCase()
+            : eventCode.startsWith('Digit')
+                ? eventCode.slice(5)
+                : '';
+        if (eventKey !== binding.key && codeKey !== binding.key) {
+            return false;
+        }
+
+        if (binding.zeroPrefix && !consumeZeroChordArm()) {
             return false;
         }
 
@@ -282,6 +334,7 @@ export function createShortcutManager({ settingsShortcutsList }) {
 
     return {
         applySettingsShortcutConfig,
-        isShortcutPressed
+        isShortcutPressed,
+        shortcutUsesZeroPrefixBinding
     };
 }

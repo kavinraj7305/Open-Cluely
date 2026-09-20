@@ -1,7 +1,7 @@
 // AI provider configuration.
 // Supported providers: 'gemini', 'grok', 'groq', 'bedrock', and 'ollama'.
 const AI_PROVIDERS = ['gemini', 'grok', 'groq', 'bedrock', 'ollama'];
-const DEFAULT_AI_PROVIDER = 'gemini';
+const DEFAULT_AI_PROVIDER = 'bedrock';
 
 const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
 const DEFAULT_OLLAMA_MODEL = 'llama3.2';
@@ -66,6 +66,9 @@ const PROGRAMMING_LANGUAGES = [
 
 // Keyboard shortcuts configuration.
 // Edit accelerators here to customize app shortcuts in one place.
+// Chord shortcuts: tap ` then a letter within 2s, or hold ` and press the letter.
+const CHORD_MODIFIER_KEY = '`';
+
 const KEYBOARD_SHORTCUTS = [
   {
     id: 'toggleTranscription',
@@ -76,20 +79,20 @@ const KEYBOARD_SHORTCUTS = [
   {
     id: 'takeScreenshot',
     buttonLabel: 'Screenshot',
-    description: 'Capture screenshot',
-    accelerator: 'Ctrl+Shift+S'
+    description: 'Tap ` then S within 2s (or hold ` and press S): screenshot',
+    accelerator: '`+S'
   },
   {
     id: 'askAi',
     buttonLabel: 'Ask AI',
-    description: 'After a screenshot: aptitude / CS fundamentals answer (MCQ, OS, DBMS, CN, DSA theory)',
-    accelerator: 'Ctrl+A'
+    description: 'Tap ` then A within 2s (or hold ` and press A): MCQ / aptitude answer',
+    accelerator: '`+A'
   },
   {
     id: 'codingAi',
     buttonLabel: 'Code',
-    description: 'After a screenshot: Python coding answer with comments, approach, and complexity',
-    accelerator: 'Ctrl+Shift+C'
+    description: 'Tap ` then C within 2s (or hold ` and press C): Python code only',
+    accelerator: '`+C'
   },
   {
     id: 'screenAi',
@@ -130,8 +133,8 @@ const KEYBOARD_SHORTCUTS = [
   {
     id: 'emergencyHide',
     buttonLabel: 'Hide',
-    description: 'Emergency hide',
-    accelerator: 'Ctrl+Shift+X'
+    description: 'Tap ` then H: hide overlay. Tap ` then H again to show it.',
+    accelerator: '`+H'
   },
   {
     id: 'toggleStealth',
@@ -142,26 +145,26 @@ const KEYBOARD_SHORTCUTS = [
   {
     id: 'moveWindowLeft',
     buttonLabel: 'Move Window Left',
-    description: 'Move window to left side',
-    accelerator: 'Ctrl+Shift+Left'
+    description: 'Tap ` then Left: move window left',
+    accelerator: '`+Left'
   },
   {
     id: 'moveWindowRight',
     buttonLabel: 'Move Window Right',
-    description: 'Move window to right side',
-    accelerator: 'Ctrl+Shift+Right'
+    description: 'Tap ` then Right: move window right',
+    accelerator: '`+Right'
   },
   {
     id: 'moveWindowUp',
     buttonLabel: 'Move Window Up',
-    description: 'Move window to top',
-    accelerator: 'Ctrl+Shift+Up'
+    description: 'Tap ` then Up: move window to top',
+    accelerator: '`+Up'
   },
   {
     id: 'moveWindowDown',
     buttonLabel: 'Move Window Down',
-    description: 'Move window to bottom',
-    accelerator: 'Ctrl+Shift+Down'
+    description: 'Tap ` then Down: move window to bottom',
+    accelerator: '`+Down'
   },
   {
     id: 'windowSizePreset1',
@@ -203,7 +206,80 @@ function isConfiguredAiProvider(providerName) {
 }
 
 function resolveAiProvider(providerName) {
-  return isConfiguredAiProvider(providerName) ? providerName : DEFAULT_AI_PROVIDER;
+  const normalizedProvider = String(providerName ?? '').trim().toLowerCase();
+  if (isConfiguredAiProvider(normalizedProvider)) {
+    return normalizedProvider;
+  }
+
+  return DEFAULT_AI_PROVIDER;
+}
+
+function hasApiKeyForAiProvider(provider, {
+  bedrockApiKey = '',
+  groqApiKey = '',
+  grokApiKey = '',
+  geminiApiKey = ''
+} = {}) {
+  const normalizedProvider = String(provider ?? '').trim().toLowerCase();
+
+  if (normalizedProvider === 'ollama') {
+    return true;
+  }
+
+  if (normalizedProvider === 'bedrock') {
+    return String(bedrockApiKey ?? '').trim().length > 0;
+  }
+
+  if (normalizedProvider === 'groq') {
+    return String(groqApiKey ?? '').trim().length > 0;
+  }
+
+  if (normalizedProvider === 'grok') {
+    return String(grokApiKey ?? '').trim().length > 0;
+  }
+
+  if (normalizedProvider === 'gemini') {
+    return String(geminiApiKey ?? '').trim().length > 0;
+  }
+
+  return false;
+}
+
+function inferAiProviderFromKeys({
+  aiProvider = '',
+  bedrockApiKey = '',
+  groqApiKey = '',
+  grokApiKey = '',
+  geminiApiKey = ''
+} = {}) {
+  const keySnapshot = { bedrockApiKey, groqApiKey, grokApiKey, geminiApiKey };
+  const normalizedProvider = String(aiProvider ?? '').trim().toLowerCase();
+  if (
+    isConfiguredAiProvider(normalizedProvider) &&
+    hasApiKeyForAiProvider(normalizedProvider, keySnapshot)
+  ) {
+    return normalizedProvider;
+  }
+
+  const hasBedrockKey = String(bedrockApiKey ?? '').trim().length > 0;
+  const hasGroqKey = String(groqApiKey ?? '').trim().length > 0;
+  const hasGrokKey = String(grokApiKey ?? '').trim().length > 0;
+  const hasGeminiKey = String(geminiApiKey ?? '').trim().length > 0;
+
+  if (hasBedrockKey) {
+    return 'bedrock';
+  }
+  if (hasGroqKey) {
+    return 'groq';
+  }
+  if (hasGrokKey) {
+    return 'grok';
+  }
+  if (hasGeminiKey) {
+    return 'gemini';
+  }
+
+  return DEFAULT_AI_PROVIDER;
 }
 
 function getDefaultOllamaBaseUrl() {
@@ -388,6 +464,48 @@ function getKeyboardShortcutAccelerator(shortcutId) {
   return accelerator;
 }
 
+function shortcutAcceleratorUsesZeroPrefix(shortcutId) {
+  const tokens = getZeroPrefixTokens(getKeyboardShortcutAccelerator(shortcutId));
+  return tokens.length >= 2 && tokens[0] === CHORD_MODIFIER_KEY;
+}
+
+function getZeroPrefixTokens(accelerator) {
+  return String(accelerator || '')
+    .split('+')
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function getZeroChordKeyFromAccelerator(accelerator) {
+  const tokens = getZeroPrefixTokens(accelerator);
+  if (tokens.length < 2 || tokens[0] !== CHORD_MODIFIER_KEY) {
+    return '';
+  }
+
+  const keyToken = tokens[tokens.length - 1];
+  if (!keyToken || keyToken === CHORD_MODIFIER_KEY) {
+    return '';
+  }
+
+  const normalized = keyToken.toLowerCase();
+  const arrowAliases = {
+    left: 'left',
+    right: 'right',
+    up: 'up',
+    down: 'down',
+    arrowleft: 'left',
+    arrowright: 'right',
+    arrowup: 'up',
+    arrowdown: 'down'
+  };
+
+  if (Object.prototype.hasOwnProperty.call(arrowAliases, normalized)) {
+    return arrowAliases[normalized];
+  }
+
+  return normalized;
+}
+
 module.exports = {
   getAiProviders,
   getDefaultAiProvider,
@@ -395,6 +513,7 @@ module.exports = {
   getDefaultOllamaModel,
   isConfiguredAiProvider,
   resolveAiProvider,
+  inferAiProviderFromKeys,
   getAssemblyAiSpeechModels,
   getDefaultAssemblyAiSpeechModel,
   getGeminiModels,
@@ -406,9 +525,14 @@ module.exports = {
   getBedrockModels,
   getDefaultBedrockModel,
   getDefaultBedrockRegion,
+  CHORD_MODIFIER_KEY,
+  getZeroChordKeyFromAccelerator,
+  getZeroPrefixTokens,
   getKeyboardShortcutAccelerator,
   getKeyboardShortcutById,
   getKeyboardShortcuts,
+  hasApiKeyForAiProvider,
+  shortcutAcceleratorUsesZeroPrefix,
   getDefaultProgrammingLanguage,
   getProgrammingLanguages,
   isConfiguredAssemblyAiSpeechModel,

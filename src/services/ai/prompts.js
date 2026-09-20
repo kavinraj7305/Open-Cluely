@@ -51,6 +51,22 @@ function resolveAnswerMode(answerMode) {
   return 'auto';
 }
 
+function extractCodingOnlyFromResponse(text) {
+  const raw = String(text || '').trim();
+  if (!raw) {
+    return raw;
+  }
+
+  const fenceMatch = raw.match(/```([\w+#.-]*)\s*\n([\s\S]*?)```/);
+  if (!fenceMatch) {
+    return raw;
+  }
+
+  const language = fenceMatch[1] || 'python';
+  const codeBody = fenceMatch[2].replace(/\s+$/, '');
+  return `\`\`\`${language}\n${codeBody}\n\`\`\``;
+}
+
 function buildForcedAnswerModeDirective(answerMode, programmingLanguage) {
   const resolvedMode = resolveAnswerMode(answerMode);
 
@@ -85,16 +101,14 @@ The user pressed the coding shortcut after capturing the screen.
 Answer as a coding problem in ${resolvedLanguage} unless the screenshot's editor/signature
 clearly requires another language.
 
-=== FORMAT ===
-Start with the code, no introduction.
+=== FORMAT (STRICT) ===
+Output ONLY one fenced code block. Nothing before or after the fence.
+No markdown headings, no **Approach**, no complexity, no edge-case bullets, no prose.
 \`\`\`${codeFenceLanguage}
 # Every line of code MUST have a comment on the line above it.
 # No line without a comment.
 <complete runnable ${resolvedLanguage} solution>
 \`\`\`
-**Approach:** 1–3 sentences.
-**Complexity:** Time O(?) | Space O(?).
-**Edge cases / gotchas:** bullet list, only if non-trivial.
 ${buildLanguageBestPractices(resolvedLanguage)}
 `.trim();
   }
@@ -489,5 +503,6 @@ module.exports = {
   buildMeetingNotesPrompt,
   buildAskAiSessionPrompt,
   buildScreenshotAnalysisPrompt,
-  buildSuggestResponsePrompt
+  buildSuggestResponsePrompt,
+  extractCodingOnlyFromResponse
 };
